@@ -1,7 +1,10 @@
 
 (require 'package)
 (package-initialize)
-(load (expand-file-name "../org-html-post.el" (file-name-directory load-file-name)))
+
+(load (expand-file-name "./org-html-post.el"
+                        (file-name-directory load-file-name)))
+
 
 
 
