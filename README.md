@@ -1,7 +1,5 @@
 **[org-html-post](http://manifold.io/project/org-html-post)** defines post rendering hooks for **org-export**; it works with a `parse-tree` representation of the current page, providing programmatic access to it's DOM.
 
--   [source available on github](https://github.com/elolaszlo/org-html-post)
-
 # setup
 
     (load "~/lisp/org-html-post.el")
