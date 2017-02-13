@@ -1,7 +1,10 @@
 
 (load-file "posthtml.el")
 
-(ert-deftest posthtml-doctype ()
-  "sets doctype"
-  (should (string= "<!DOCTYPE html>\n<html></html>"
-                   (funcall (posthtml (posthtml/doctype)) "<html></html>"))))
+(ert-deftest posthtml/doctype ()
+  "without arguments, sets default doctype"
+  (should (string= (funcall (posthtml (posthtml/doctype)) "<html></html>")
+                   "<!DOCTYPE html>\n<html/>"))
+  "accepts doctype (string) argument"
+  (should (string= (funcall (posthtml (posthtml/doctype "<!DOCTYPE xhtml>")) "<html></html>")
+                   "<!DOCTYPE xhtml>\n<html/>")))
