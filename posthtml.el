@@ -30,18 +30,16 @@
 (defun posthtml-append (container element)
   (if (= 1 (length container))
       (nconc container (list '() element))
-    (nconc container (list element))))
+    (nconc container (list element)))
+  container)
 
-(defun posthtml-query (&optional contents selector)
-  (if (> 1 (length selector)) '()
-    (or (enlive-query contents selector)
-        (let ((selectors (append selector nil)))
-          (while selectors
-            (let ((container (enlive-query contents (vconcat (list (car selectors))))))
-              (if (null container) (posthtml-append contents `(,(car selectors)))
-                (progn (setf contents container)
-                       (setf selectors (cdr selectors))))))
-          contents))))
+(defun posthtml-find (elements &optional selector)
+  (when selector
+    (or (enlive-query elements selector)
+        (let* ((selector (append selector nil))
+               (container (enlive-query elements (vconcat (list (car selector))))))
+          (if container (or (posthtml-find container (vconcat (cdr selector))) container)
+            (posthtml-find (posthtml-append elements `(,(car selector))) (vconcat selector)))))))
 
 
 (defmacro def-posthtml/element (selector)
@@ -50,7 +48,7 @@
        (posthtml$ ,selector content))))
 
 (defun posthtml$ (selector &optional content)
-  (let ((element (posthtml-query contents selector)))
+  (let ((element (posthtml-find contents selector)))
     (when (and element content) (posthtml-append element content))
     element))
 
