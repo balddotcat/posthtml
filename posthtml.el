@@ -33,24 +33,37 @@
     (nconc container (list element)))
   container)
 
+(defun posthtml-prepend (container element)
+  (if (> 3 (length container))
+      (posthtml-append container element)
+    (setf (nthcdr 2 container) (append (list element) (nthcdr 2 container))))
+  container)
+
 (defun posthtml-find (elements &optional selector)
   (when selector
     (or (enlive-query elements selector)
         (let* ((selector (append selector nil))
-               (container (enlive-query elements (vconcat (list (car selector))))))
+               (prepend nil)
+               (element (let ((element (split-string (format "%s" (car selector)) ":" t)))
+                          (when (< 1 (length element))
+                            (cond ((string= "first" (cadr element)) (setf prepend t))))
+                          (intern (car element))))
+               (container (enlive-query elements (vconcat (list element)))))
           (if container (or (posthtml-find container (vconcat (cdr selector))) container)
-            (posthtml-find (posthtml-append elements `(,(car selector))) (vconcat selector)))))))
+            (posthtml-find (if prepend (posthtml-prepend elements (list element))
+                             (posthtml-append elements (list element)))
+                           (vconcat selector)))))))
+
+(defun posthtml$ (selector &optional content)
+  (let ((element (posthtml-find contents selector)))
+    (when (and element content) (posthtml-append element content))
+    element))
 
 
 (defmacro def-posthtml/element (selector)
   (let ((name (mapconcat (lambda (s) (format "%s" s)) (cdr (append selector nil)) "-")))
     `(defun ,(intern (concat "posthtml/" name)) (&optional content)
        (posthtml$ ,selector content))))
-
-(defun posthtml$ (selector &optional content)
-  (let ((element (posthtml-find contents selector)))
-    (when (and element content) (posthtml-append element content))
-    element))
 
 
 (defun posthtml/doctype (&optional doctype)

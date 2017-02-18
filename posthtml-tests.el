@@ -16,7 +16,7 @@
                             "<html><body><p/></body></html>")
                    "<html><body><p><strong/></p></body></html>")))
 
-(ert-deftest posthtml$--arguments ()
+(ert-deftest posthtml$--args ()
   "accepts contents (string) argument"
   (should (string= (funcall (posthtml (posthtml$ [p strong] "hello"))
                             "<html/>")
@@ -25,6 +25,12 @@
   (should (string= (funcall (posthtml (posthtml$ [p] '(strong () "hello")))
                             "<html/>")
                    "<html><p><strong>hello</strong></p></html>")))
+
+(ert-deftest posthtml$--args:container-position ()
+  "accepts first as position argument"
+  (should (string= (funcall (posthtml (posthtml$ [head:first]))
+                            "<html><body/></html>")
+                   "<html><head/><body/></html>")))
 
 
 (ert-deftest posthtml/doctype ()
