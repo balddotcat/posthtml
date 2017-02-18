@@ -70,3 +70,12 @@
   (setf posthtml-doctype (or doctype "<!DOCTYPE html>")))
 
 (def-posthtml/element [html head title])
+
+
+(defmacro posthtml: (key)
+  (let ((key (intern (concat ":" (format "%s" key)))))
+    `(let ((value (plist-get info ,key)))
+       ,(if (member key '(:title :author))
+            '(if (and value (listp value)) (substring-no-properties (car value))
+               (or value ""))
+          (or value "")))))

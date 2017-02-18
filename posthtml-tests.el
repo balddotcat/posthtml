@@ -35,18 +35,25 @@
 
 (ert-deftest posthtml/doctype ()
   "without arguments, sets default doctype"
-  (should (string= (funcall (posthtml (posthtml/doctype)) "<html></html>")
+  (should (string= (funcall (posthtml (posthtml/doctype))
+                            "<html></html>")
                    "<!DOCTYPE html>\n<html/>"))
   (setf posthtml-doctype '()))
 
 (ert-deftest posthtml/doctype--arguments ()
   "accepts doctype (string) argument"
-  (should (string= (funcall (posthtml (posthtml/doctype "<!DOCTYPE xhtml>")) "<html></html>")
+  (should (string= (funcall (posthtml (posthtml/doctype "<!DOCTYPE xhtml>"))
+                            "<html></html>")
                    "<!DOCTYPE xhtml>\n<html/>"))
   (setf posthtml-doctype '()))
 
 
 (ert-deftest posthtml/head-title ()
   "adds html head title element"
-  (should (string= (funcall (posthtml (posthtml/head-title "hello")) "<html/>")
+  (should (string= (funcall (posthtml (posthtml/head-title "hello"))
+                            "<html/>")
+                   "<html><head><title>hello</title></head></html>"))
+  "can be set to page #+TITLE: property"
+  (should (string= (funcall (posthtml (posthtml/head-title (posthtml: title)))
+                            "<html/>" '(:title "hello"))
                    "<html><head><title>hello</title></head></html>")))
