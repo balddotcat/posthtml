@@ -5,12 +5,8 @@
 (defvar posthtml-doctype '())
 
 
-(defmacro posthtml-filter-final-output (&rest body)
-  `(lambda () (posthtml-filter-final-output* (posthtml ,@body))))
-
-(defun posthtml-filter-final-output* (fn)
-  (add-to-list 'org-export-filter-final-output-functions (posthtml* fn)))
-
+(defun posthtml-filter-final-output (&rest body)
+  `(:filter-final-output ,(posthtml* (posthtml body))))
 
 (defmacro posthtml (&rest body)
   `(lambda (contents &optional info)
@@ -24,7 +20,7 @@
      contents))
 
 (defun posthtml* (fn)
-  (lambda (contents backend info) (funcall fn (enlive-parse contents) info)))
+  `(lambda (contents backend info) (funcall ,fn (enlive-parse contents) info)))
 
 
 (defun posthtml-append (container element)
@@ -79,3 +75,6 @@
             '(if (and value (listp value)) (substring-no-properties (car value))
                (or value ""))
           (or value "")))))
+
+
+(provide 'posthtml)

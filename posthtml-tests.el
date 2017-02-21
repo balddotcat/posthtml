@@ -1,6 +1,7 @@
 
 (require 'package)
 (package-initialize)
+(require 'ox-publish)
 
 (load-file "posthtml.el")
 
@@ -57,3 +58,10 @@
   (should (string= (funcall (posthtml (posthtml/head-title (posthtml: title)))
                             "<html/>" '(:title "hello"))
                    "<html><head><title>hello</title></head></html>")))
+
+
+(ert-deftest posthtml-filter-final-output ()
+  (org-export-define-derived-backend 'test1 'html
+    :filters-alist `(,(posthtml-filter-final-output (posthtml/doctype))))
+  (should (string-prefix-p "<!DOCTYPE html>\n<html"
+                           (with-temp-buffer (org-export-as 'test1 nil nil nil)))))
