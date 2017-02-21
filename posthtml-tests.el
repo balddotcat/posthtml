@@ -64,4 +64,12 @@
   (org-export-define-derived-backend 'test1 'html
     :filters-alist `(,(posthtml-filter-final-output (posthtml/doctype))))
   (should (string-prefix-p "<!DOCTYPE html>\n<html"
-                           (with-temp-buffer (org-export-as 'test1 nil nil nil)))))
+                           (with-temp-buffer (org-export-as 'test1 nil nil nil))))
+  (posthtml-add-export-filter-final-output (posthtml/doctype))
+  (should (string-prefix-p "<!DOCTYPE html>\n<html"
+                           (with-temp-buffer (org-export-as 'html nil nil nil))))
+  (setf org-export-filter-final-output-functions nil)
+  (funcall (posthtml-export-filter-final-output (posthtml/doctype)))
+  (should (string-prefix-p "<!DOCTYPE html>\n<html"
+                           (with-temp-buffer (org-export-as 'html nil nil nil))))
+  (setf org-export-filter-final-output-functions nil))

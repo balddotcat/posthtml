@@ -8,6 +8,14 @@
 (defun posthtml-filter-final-output (&rest body)
   `(:filter-final-output ,(posthtml* (posthtml body))))
 
+(defun posthtml-add-export-filter-final-output (&rest body)
+  (add-to-list 'org-export-filter-final-output-functions
+               (posthtml* (posthtml body))))
+
+(defun posthtml-export-filter-final-output (&rest body)
+  `(lambda () (posthtml-add-export-filter-final-output ,@body)))
+
+
 (defmacro posthtml (&rest body)
   `(lambda (contents &optional info)
      (when (not (listp contents))
@@ -35,6 +43,7 @@
     (setf (nthcdr 2 container) (append (list element) (nthcdr 2 container))))
   container)
 
+
 (defun posthtml-find (elements &optional selector)
   (when selector
     (or (enlive-query elements selector)
@@ -60,7 +69,6 @@
   (let ((name (mapconcat (lambda (s) (format "%s" s)) (cdr (append selector nil)) "-")))
     `(defun ,(intern (concat "posthtml/" name)) (&optional content)
        (posthtml$ ,selector content))))
-
 
 (defun posthtml/doctype (&optional doctype)
   (setf posthtml-doctype (or doctype "<!DOCTYPE html>")))
