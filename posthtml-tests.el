@@ -62,7 +62,10 @@
 
 (ert-deftest posthtml-filter-final-output ()
   (org-export-define-derived-backend 'test1 'html
-    :filters-alist `(,(posthtml-filter-final-output (posthtml/doctype))))
+    :filters-alist `((:filter-final-output ,(posthtml*
+                        (posthtml
+                         (posthtml/doctype)
+                         (posthtml/head-title "hello"))))))
   (should (string-prefix-p "<!DOCTYPE html>\n<html"
                            (with-temp-buffer (org-export-as 'test1 nil nil nil))))
   (posthtml-add-export-filter-final-output (posthtml/doctype))

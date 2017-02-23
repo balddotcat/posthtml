@@ -5,16 +5,12 @@
 (defvar posthtml-doctype '())
 
 
-(defun posthtml-filter-final-output (&rest body)
-  `(:filter-final-output ,(posthtml* (posthtml body))))
+(defmacro posthtml-add-export-filter-final-output (&rest body)
+  `(add-to-list 'org-export-filter-final-output-functions
+                (posthtml* (posthtml ,@body))))
 
-(defun posthtml-add-export-filter-final-output (&rest body)
-  (add-to-list 'org-export-filter-final-output-functions
-               (posthtml* (posthtml body))))
-
-(defun posthtml-export-filter-final-output (&rest body)
+(defmacro posthtml-export-filter-final-output (&rest body)
   `(lambda () (posthtml-add-export-filter-final-output ,@body)))
-
 
 (defmacro posthtml (&rest body)
   `(lambda (contents &optional info)
@@ -26,6 +22,7 @@
      (when posthtml-doctype
        (setf contents (concatenate 'string posthtml-doctype "\n" contents)))
      contents))
+
 
 (defun posthtml* (fn)
   `(lambda (contents backend info) (funcall ,fn (enlive-parse contents) info)))
