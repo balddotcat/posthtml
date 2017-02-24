@@ -3,6 +3,7 @@
 (require 'enlive)
 
 (defvar posthtml-doctype '())
+(defvar posthtml-special-chars '("amp" "gt" "lt"))
 
 
 (defmacro posthtml-add-export-filter-final-output (&rest body)
@@ -19,15 +20,39 @@
          (when (not (string= "" doctype)) (posthtml/doctype doctype)))
        (setf contents (posthtml-parse-html contents)))
      ,@body
-     (when (listp contents)
-       (setf contents (esxml-to-xml contents)))
-     (when posthtml-doctype
-       (setf contents (concatenate 'string posthtml-doctype "\n" contents)))
+     (if (listp contents) (setf contents (posthtml-parse-esxml contents))
+       (when posthtml-doctype
+         (setf contents (concatenate 'string posthtml-doctype "\n" contents))))
      contents))
 
-
 (defun posthtml* (fn)
-  `(lambda (contents backend info) (funcall ,fn (enlive-parse contents) info)))
+  `(lambda (contents backend info) (funcall ,fn contents info)))
+
+
+(defun posthtml-parse-html (contents)
+  (with-current-buffer (get-buffer-create " *posthtml*")
+    (erase-buffer)
+    (insert contents)
+    (loop for c in posthtml-special-chars do
+          (goto-char 1)
+          (while (search-forward (concat "&" c ";") nil t)
+            (replace-match (concat "%%" c "%%") nil t)))
+    (libxml-parse-html-region (point-min) (point-max))))
+
+(defun posthtml-parse-esxml (contents)
+  (with-current-buffer (get-buffer-create " *posthtml*")
+    (erase-buffer)
+    (when posthtml-doctype (insert posthtml-doctype "\n"))
+    (insert (esxml-to-xml contents))
+    (loop for c in posthtml-special-chars do
+          (goto-char 1)
+          (while (search-forward (concat "%%" c "%%") nil t)
+            (replace-match (concat "&" c ";") nil t)))
+    (goto-char 1)
+    (while (search-forward "<comment>" nil t) (replace-match "<!--" nil t))
+    (goto-char 1)
+    (while (search-forward "</comment>" nil t) (replace-match "-->" nil t))
+    (buffer-string)))
 
 
 (defun posthtml-append (container element)

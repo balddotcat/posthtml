@@ -80,3 +80,15 @@
   (should (string-prefix-p "<!DOCTYPE html>\n<html"
                            (with-temp-buffer (org-export-as 'html nil nil nil))))
   (setf org-export-filter-final-output-functions nil))
+
+
+(ert-deftest posthtml--special-characters ()
+  (should (string= (funcall (posthtml (posthtml$ [body] " hello"))
+                            "<html><body>&amp; &gt; &lt;</body></html>")
+                   "<html><body>&amp; &gt; &lt; hello</body></html>")))
+
+
+(ert-deftest posthtml--comments ()
+  (should (string= (funcall (posthtml (posthtml$ [body] " hello"))
+                            "<html><body><!-- comment --></body></html>")
+                   "<html><body><!-- comment --> hello</body></html>")))
