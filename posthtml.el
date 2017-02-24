@@ -1,4 +1,39 @@
+;;; posthtml.el --- post HTML rendering filters for org-export
+;; Copyright (C) Elo Laszlo 2017
 
+;; Author: Elo Laszlo <laszlo at manifold dot io>
+;; Created: August 2016
+;; Updated: Feb 2017
+;; Description: post HTML rendering filters for org-export
+;; Homepage: http://manifold.io/project/posthtml
+;; Version: 0.2.0
+;; Package-Requires: ((esxml "20160703.1417")(enlive "20150824.549"))
+;;
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+;;
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+;;; Commentary:
+;;
+;; posthtml defines post rendering hooks for org-export;
+;; it works with a parse-tree representation of the current page,
+;; providing programmatic access to it's DOM.
+;;
+;; (posthtml (posthtml/doctype "<!DOCTYPE html>")
+;;           (posthtml/head-title (posthtml: title))
+;;           (posthtml$ [html body article:first] "add text")
+;;           [...])
+
+;;; Code:
 (require 'esxml)
 (require 'enlive)
 
