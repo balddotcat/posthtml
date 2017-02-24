@@ -35,6 +35,10 @@
 
 
 (ert-deftest posthtml/doctype ()
+  "original doctype is retained"
+  (should (string= (funcall (posthtml (identity nil))
+                            "<!doctype xhtml><html></html>")
+                   "<!doctype xhtml>\n<html/>"))
   "without arguments, sets default doctype"
   (should (string= (funcall (posthtml (posthtml/doctype))
                             "<html></html>")

@@ -15,7 +15,9 @@
 (defmacro posthtml (&rest body)
   `(lambda (contents &optional info)
      (when (not (listp contents))
-       (setf contents (enlive-parse contents)))
+       (let ((doctype (subseq contents 0 (search "<html" contents))))
+         (when (not (string= "" doctype)) (posthtml/doctype doctype)))
+       (setf contents (posthtml-parse-html contents)))
      ,@body
      (when (listp contents)
        (setf contents (esxml-to-xml contents)))
@@ -68,7 +70,8 @@
        (posthtml$ ,selector content))))
 
 (defun posthtml/doctype (&optional doctype)
-  (setf posthtml-doctype (or doctype "<!DOCTYPE html>")))
+  (if doctype (setf posthtml-doctype (subseq doctype 0 (search "\n" doctype :from-end t)))
+    (setf posthtml-doctype "<!DOCTYPE html>")))
 
 (def-posthtml/element [html head title])
 
