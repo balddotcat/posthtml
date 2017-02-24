@@ -90,7 +90,9 @@
 
 
 (defmacro def-posthtml/element (selector)
-  (let ((name (mapconcat (lambda (s) (format "%s" s)) (cdr (append selector nil)) "-")))
+  (let ((name (mapconcat (lambda (s)
+                           (let ((s (format "%s" s))) (subseq s 0 (search ":" s))))
+                         (cdr (append selector nil)) "-")))
     `(defun ,(intern (concat "posthtml/" name)) (&optional content)
        (posthtml$ ,selector content))))
 
@@ -98,7 +100,7 @@
   (if doctype (setf posthtml-doctype (subseq doctype 0 (search "\n" doctype :from-end t)))
     (setf posthtml-doctype "<!DOCTYPE html>")))
 
-(def-posthtml/element [html head title])
+(def-posthtml/element [html head:first title])
 
 
 (defmacro posthtml: (key)
