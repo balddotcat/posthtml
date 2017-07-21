@@ -144,7 +144,7 @@
        ,(if (member key '(:title :author))
             '(if (and value (listp value)) (substring-no-properties (car value))
                (or value ""))
-          (or value "")))))
+          '(or value "")))))
 
 
 (provide 'posthtml)
