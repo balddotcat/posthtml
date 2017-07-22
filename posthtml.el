@@ -41,12 +41,24 @@
 (defvar posthtml-special-chars '("amp" "gt" "lt"))
 
 
-(defmacro posthtml-add-export-filter-final-output (&rest body)
-  `(add-to-list 'org-export-filter-final-output-functions
-                (posthtml* (posthtml ,@body))))
+(defmacro posthtml-filter-final-output (&rest body)
+  "an org-export-filter-final-output-functions
+definition; a posthtml filter is defined with the
+contents of BODY"
+  `(lambda (contents backend info)
+     (funcall (posthtml ,@body) contents info)))
 
-(defmacro posthtml-export-filter-final-output (&rest body)
-  `(lambda () (posthtml-add-export-filter-final-output ,@body)))
+(defmacro posthtml-add-export-filter (&rest body)
+  "add a posthtml filter to the default export process;
+a posthtml filter is defined with the contents of BODY"
+  `(add-to-list 'org-export-filter-final-output-functions
+                (posthtml-filter-final-output ,@body)))
+
+(defmacro posthtml-add-filter (&rest body)
+  "return a posthtml filter lambda; a posthtml filter
+is defined with the contents of BODY"
+  `(lambda (&optional project-properties) (posthtml-add-export-filter ,@body)))
+
 
 (defmacro posthtml (&rest body)
   `(lambda (contents &optional info)
@@ -59,9 +71,6 @@
        (when posthtml-doctype
          (setf contents (concatenate 'string posthtml-doctype "\n" contents))))
      contents))
-
-(defun posthtml* (fn)
-  `(lambda (contents backend info) (funcall ,fn contents info)))
 
 
 (defun posthtml-parse-html (contents)

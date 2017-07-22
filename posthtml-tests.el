@@ -64,21 +64,31 @@
                    "<html><head><title>hello</title></head></html>")))
 
 
-(ert-deftest posthtml-filter-final-output ()
-  (org-export-define-derived-backend 'test1 'html
-    :filters-alist `((:filter-final-output ,(posthtml*
-                        (posthtml
-                         (posthtml/doctype)
-                         (posthtml/head-title "hello"))))))
-  (should (string-prefix-p "<!DOCTYPE html>\n<html"
-                           (with-temp-buffer (org-export-as 'test1 nil nil nil))))
-  (posthtml-add-export-filter-final-output (posthtml/doctype))
-  (should (string-prefix-p "<!DOCTYPE html>\n<html"
-                           (with-temp-buffer (org-export-as 'html nil nil nil))))
+(ert-deftest posthtml-add-filter-to-export-process ()
+  "org export (derived) backend"
+  (org-export-define-derived-backend
+      'test1 'html
+    :filters-alist `((:filter-final-output
+                      ,(posthtml-filter-final-output
+                        (posthtml/doctype "THIS")))))
+  (should
+   (string-prefix-p "THIS\n<html"
+                    (with-temp-buffer (org-export-as 'test1 nil nil nil))))
+
+  "default export process"
   (setf org-export-filter-final-output-functions nil)
-  (funcall (posthtml-export-filter-final-output (posthtml/doctype)))
-  (should (string-prefix-p "<!DOCTYPE html>\n<html"
-                           (with-temp-buffer (org-export-as 'html nil nil nil))))
+  (posthtml-add-export-filter (posthtml/doctype "THIS"))
+  (should
+   (string-prefix-p "THIS\n<html"
+                    (with-temp-buffer (org-export-as 'html nil nil nil))))
+
+  "org publishing process :preparation-action"
+  (setf org-export-filter-final-output-functions nil)
+  (funcall (posthtml-add-filter (posthtml/doctype "THIS")))
+  (should
+   (string-prefix-p "THIS\n<html"
+                    (with-temp-buffer (org-export-as 'html nil nil nil))))
+
   (setf org-export-filter-final-output-functions nil))
 
 
