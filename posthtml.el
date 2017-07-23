@@ -65,11 +65,9 @@ is defined with the contents of BODY"
      (let ((doctype (and (not (listp contents))
                          (string-prefix-p "<!DOCTYPE" contents t)
                          (plist-get info :html-doctype))))
-       (when (not (listp contents))
-         (setf contents (posthtml-parse-html contents)))
+       (posthtml-parse-html)
        ,@body
-       (when (listp contents)
-         (setf contents (posthtml-parse-esxml contents)))
+       (posthtml-parse-esxml)
        (if doctype
            (format "%s\n%s"
                    (or (cdr (assoc doctype org-html-doctype-alist)) doctype)
@@ -77,29 +75,33 @@ is defined with the contents of BODY"
          (format "%s" contents)))))
 
 
-(defun posthtml-parse-html (contents)
-  (with-current-buffer (get-buffer-create " *posthtml*")
-    (erase-buffer)
-    (insert contents)
-    (loop for c in posthtml-special-chars do
-          (goto-char 1)
-          (while (search-forward (concat "&" c ";") nil t)
-            (replace-match (concat "%%" c "%%") nil t)))
-    (libxml-parse-html-region (point-min) (point-max))))
+(defun posthtml-parse-html ()
+  (when (not (listp contents))
+    (setf contents
+          (with-current-buffer (get-buffer-create " *posthtml*")
+            (erase-buffer)
+            (insert contents)
+            (loop for c in posthtml-special-chars do
+                  (goto-char 1)
+                  (while (search-forward (concat "&" c ";") nil t)
+                    (replace-match (concat "%%" c "%%") nil t)))
+            (libxml-parse-html-region (point-min) (point-max))))))
 
-(defun posthtml-parse-esxml (contents)
-  (with-current-buffer (get-buffer-create " *posthtml*")
-    (erase-buffer)
-    (insert (esxml-to-xml contents))
-    (loop for c in posthtml-special-chars do
-          (goto-char 1)
-          (while (search-forward (concat "%%" c "%%") nil t)
-            (replace-match (concat "&" c ";") nil t)))
-    (goto-char 1)
-    (while (search-forward "<comment>" nil t) (replace-match "<!--" nil t))
-    (goto-char 1)
-    (while (search-forward "</comment>" nil t) (replace-match "-->" nil t))
-    (buffer-string)))
+(defun posthtml-parse-esxml ()
+  (when (listp contents)
+    (setf contents
+          (with-current-buffer (get-buffer-create " *posthtml*")
+            (erase-buffer)
+            (insert (esxml-to-xml contents))
+            (loop for c in posthtml-special-chars do
+                  (goto-char 1)
+                  (while (search-forward (concat "%%" c "%%") nil t)
+                    (replace-match (concat "&" c ";") nil t)))
+            (goto-char 1)
+            (while (search-forward "<comment>" nil t) (replace-match "<!--" nil t))
+            (goto-char 1)
+            (while (search-forward "</comment>" nil t) (replace-match "-->" nil t))
+            (buffer-string)))))
 
 
 (defun posthtml-append (container element)
