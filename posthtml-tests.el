@@ -59,6 +59,14 @@
              (funcall filter "<!DOCTYPE html><html/>")))))
 
 
+(ert-deftest posthtml-special-characters ()
+  (let ((filter (posthtml (posthtml/doctype))))
+    (should (string= "<html><body>&amp; &gt; &lt;</body></html>"
+                     (funcall filter "<html><body>&amp; &gt; &lt;</body></html>")))
+    (should (string= "<html><body><!-- comment --></body></html>"
+             (funcall filter "<html><body><!-- comment --></body></html>")))))
+
+
 (ert-deftest posthtml$--nodes ()
   "creates selector's dom nodes as required"
   (should (string= (funcall (posthtml (posthtml$ [body p strong]))
@@ -97,15 +105,3 @@
   (should (string= (funcall (posthtml (posthtml/head-title (posthtml: title)))
                             "<html/>" '(:title "hello"))
                    "<html><head><title>hello</title></head></html>")))
-
-
-(ert-deftest posthtml--special-characters ()
-  (should (string= (funcall (posthtml (posthtml$ [body] " hello"))
-                            "<html><body>&amp; &gt; &lt;</body></html>")
-                   "<html><body>&amp; &gt; &lt; hello</body></html>")))
-
-
-(ert-deftest posthtml--comments ()
-  (should (string= (funcall (posthtml (posthtml$ [body] " hello"))
-                            "<html><body><!-- comment --></body></html>")
-                   "<html><body><!-- comment --> hello</body></html>")))
