@@ -37,7 +37,6 @@
 (require 'esxml)
 (require 'enlive)
 
-(defvar posthtml-doctype '())
 (defvar posthtml-special-chars '("amp" "gt" "lt"))
 
 
@@ -57,20 +56,25 @@ a posthtml filter is defined with the contents of BODY"
 (defmacro posthtml-add-filter (&rest body)
   "return a posthtml filter lambda; a posthtml filter
 is defined with the contents of BODY"
-  `(lambda (&optional project-properties) (posthtml-add-export-filter ,@body)))
+  `(lambda (&optional project-properties)
+     (posthtml-add-export-filter ,@body)))
 
 
 (defmacro posthtml (&rest body)
   `(lambda (contents &optional info)
-     (when (not (listp contents))
-       (let ((doctype (subseq contents 0 (search "<html" contents))))
-         (when (not (string= "" doctype)) (posthtml/doctype doctype)))
-       (setf contents (posthtml-parse-html contents)))
-     ,@body
-     (if (listp contents) (setf contents (posthtml-parse-esxml contents))
-       (when posthtml-doctype
-         (setf contents (concatenate 'string posthtml-doctype "\n" contents))))
-     contents))
+     (let ((doctype (and (not (listp contents))
+                         (string-prefix-p "<!DOCTYPE" contents t)
+                         (plist-get info :html-doctype))))
+       (when (not (listp contents))
+         (setf contents (posthtml-parse-html contents)))
+       ,@body
+       (when (listp contents)
+         (setf contents (posthtml-parse-esxml contents)))
+       (if doctype
+           (format "%s\n%s"
+                   (or (cdr (assoc doctype org-html-doctype-alist)) doctype)
+                   contents)
+         (format "%s" contents)))))
 
 
 (defun posthtml-parse-html (contents)
@@ -86,7 +90,6 @@ is defined with the contents of BODY"
 (defun posthtml-parse-esxml (contents)
   (with-current-buffer (get-buffer-create " *posthtml*")
     (erase-buffer)
-    (when posthtml-doctype (insert posthtml-doctype "\n"))
     (insert (esxml-to-xml contents))
     (loop for c in posthtml-special-chars do
           (goto-char 1)
@@ -140,9 +143,12 @@ is defined with the contents of BODY"
     `(defun ,(intern (concat "posthtml/" name)) (&optional content)
        (posthtml$ ,selector content))))
 
-(defun posthtml/doctype (&optional doctype)
-  (if doctype (setf posthtml-doctype (subseq doctype 0 (search "\n" doctype :from-end t)))
-    (setf posthtml-doctype "<!DOCTYPE html>")))
+(defun posthtml/doctype (&optional flavour)
+  "set the posthtml filter's doctype property
+to FLAVOUR, overriding what might have been
+defined in filter's INFO originally."
+  (when flavour (setf doctype flavour)))
+
 
 (def-posthtml/element [html head:first title])
 

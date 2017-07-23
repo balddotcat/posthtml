@@ -34,23 +34,30 @@
                    "<html><head/><body/></html>")))
 
 
-(ert-deftest posthtml/doctype ()
-  "original doctype is retained"
-  (should (string= (funcall (posthtml (identity nil))
-                            "<!doctype xhtml><html></html>")
-                   "<!doctype xhtml>\n<html/>"))
-  "without arguments, sets default doctype"
-  (should (string= (funcall (posthtml (posthtml/doctype))
-                            "<html></html>")
-                   "<!DOCTYPE html>\n<html/>"))
-  (setf posthtml-doctype '()))
+(ert-deftest posthtml-doctype ()
+  "does not insert doctype if not already declared"
+  (let ((filter (posthtml (posthtml/doctype))))
+    (should (string-prefix-p
+             "<html"
+             (funcall filter "<html/>"))))
 
-(ert-deftest posthtml/doctype--arguments ()
-  "accepts doctype (string) argument"
-  (should (string= (funcall (posthtml (posthtml/doctype "<!DOCTYPE xhtml>"))
-                            "<html></html>")
-                   "<!DOCTYPE xhtml>\n<html/>"))
-  (setf posthtml-doctype '()))
+  "uses the INFO object to get current doctype"
+  (let ((filter (posthtml (posthtml/doctype))))
+    (should (string-prefix-p
+             "<!DOCTYPE html>"
+             (funcall filter "<!DOCTYPE something><html/>" '(:html-doctype "html5")))))
+
+  "doctype can be set with posthtml/doctype"
+  (let ((filter (posthtml (posthtml/doctype "html5"))))
+    (should (string-prefix-p
+             "<!DOCTYPE html>"
+             (funcall filter "<!DOCTYPE something><html/>"))))
+
+  "accepts custom doctype string"
+  (let ((filter (posthtml (posthtml/doctype "THIS"))))
+    (should (string-prefix-p
+             "THIS"
+             (funcall filter "<!DOCTYPE html><html/>")))))
 
 
 (ert-deftest posthtml/head-title ()
