@@ -89,7 +89,9 @@ returns an org export filter lambda"
   (format "%s%s"
           (if doctype (concat doctype "\n") "")
           (if (listp contents)
-              (posthtml-parse-esxml contents)
+              (replace-regexp-in-string
+               "\n+<" "<" (replace-regexp-in-string
+                           ">\n+" ">" (posthtml-parse-esxml contents)))
             contents)))
 
 (defvar posthtml-special-chars '("amp" "gt" "lt"))
