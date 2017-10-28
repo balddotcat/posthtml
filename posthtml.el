@@ -5,7 +5,7 @@
 ;; Created: August 2016
 ;; Updated: Aug 2017
 ;; Description: post HTML rendering filters for org-export
-;; Homepage: http://bald.cat/project/posthtml
+;; Homepage: http://bald.cat/about/project/posthtml
 ;; Version: 0.3.0
 ;; Package-Requires: ((esxml "20160703.1417")(enlive "20150824.549"))
 ;;
@@ -23,6 +23,18 @@
 ;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 ;;; Commentary:
+;; An emacs org-mode export filter for cosmetic touchups of html output;
+;; a set of macros that give access to the DOM structure, allowing for
+;; querying and modification with CSS like selectors.
+;;
+;; ($each [header nav li]
+;;        (lambda (nav-element uri)
+;;          (let ((href (posthtml$ nav-element [a] :attr 'href)))
+;;            (when (and (not (string= "/" href))
+;;                       (string-prefix-p href uri t))
+;;              (posthtml-attribute nav-element 'class 'current))))
+;;        (page-uri info))
+
 
 ;;; Code:
 (require 'esxml)                        ; esxml-to-xml
