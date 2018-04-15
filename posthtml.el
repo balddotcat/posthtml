@@ -3,10 +3,10 @@
 
 ;; Author: Elo Laszlo <hello at bald dot cat>
 ;; Created: August 2016
-;; Updated: Aug 2017
+;; Updated: April 2018
 ;; Description: post HTML rendering filters for org-export
-;; Homepage: http://bald.cat/about/project/posthtml
-;; Version: 0.3.0
+;; Homepage: http://bald.cat/code/posthtml
+;; Version: 0.4.0
 ;; Package-Requires: ((esxml "20160703.1417")(enlive "20150824.549"))
 ;;
 ;; This program is free software; you can redistribute it and/or modify
@@ -35,138 +35,87 @@
 ;;              (posthtml-attribute nav-element 'class 'current))))
 ;;        (page-uri info))
 
-
 ;;; Code:
 (require 'esxml)                        ; esxml-to-xml
 (require 'enlive)                       ; enlive-query, enlive-query-all
 (eval-when-compile (require 'cl))       ; lexical-let, cl-macrolet
-(require 'ox-html)                      ; org-html-doctype
 
+;; macros
+;; #+BEGIN_EXAMPLE
+;;   (posthtml:filter-final-output [...])
+;; #+END_EXAMPLE
 
 ;;;###autoload
-(defmacro posthtml (&rest body)
-  "An org-export-filter-final-output-functions definition with
-the contents of BODY. CONTENTS and INFO are lexically bound.
+(defmacro posthtml:filter-final-output (&rest body)
+  "add a posthtml filter to the default export process
 
-CONTENTS is an esxml representation of the DOM tree, as parsed
-by libxml-parse-html-region; the function returns a string via
-esxml-to-xml.
+see org-export-filter-final-output-functions and
+    posthtml:filter"
+  `(add-to-list 'org-export-filter-final-output-functions
+                (lambda (contents backend info)
+                  (posthtml:filter contents info ,@body))))
 
-INFO is the org-export property plist. The doctype, when
-specified, is derived from INFO.
+;;;###autoload
+(defmacro posthtml:filter (content &optional export-options &rest body)
+  "parse CONTENT with BODY
 
-Within BODY, the following shorthand is available;
-=($ [selector] &optional fn args)= for
-=(posthtml$ contents [selector] &optional fn args)=,
-=($each [selector] &optional fn args)= for
-=(posthtml$each contents [selector] &optional fn args)=."
+EXPORT-OPTIONS is lexically bound as INFO,
+CONTENT is lexically bounda as CONTENTS"
   (let ((contents (make-symbol "contents"))
-        (backend (make-symbol "backend"))
         (info (make-symbol "info")))
-    `(function
-      (lambda (,contents &optional ,backend ,info)
-        (posthtml-render
-         (lexical-let
-             ((contents (if (not (listp ,contents))
-                            (posthtml-parse-html ,contents)
-                          ,contents))
-              (info ,info))
-           ;; be aware of macro binding when fn is a lambda
-           (cl-macrolet
-               (($ (selector &optional fn &rest args)
-                   `(funcall 'posthtml$ contents ,selector ,fn ,@args))
-                ($each (selector &optional fn &rest args)
-                       `(funcall 'posthtml$each contents ,selector ,fn ,@args)))
-             ,@body)
-           contents)
-         (and (and (not (listp ,contents)) ,info)
-              (string-prefix-p "<!DOCTYPE" ,contents t)
-              (org-html-doctype ,info)))))))
+    `(funcall (lambda (,contents &optional ,info)
+                (lexical-let ((doctype (save-match-data
+                                         (if (eq nil (string-match "^\\(<!DOCTYPE[^>]+?>\n?\\)" ,contents)) ""
+                                           (match-string 1 ,contents))))
+                              (contents (posthtml--html-to-esxml ,contents))
+                              (info ,info))
+                  (cl-macrolet (($each (selector &optional fn &rest args)
+                                       `(funcall 'posthtml$each contents ,selector ,fn ,@args))
+                                ($ (selector &optional fn &rest args)
+                                   `(funcall 'posthtml$ contents ,selector ,fn ,@args)))
+                    ,@body)
+                  (concat doctype (posthtml--esxml-to-html contents))))
+              ,content ,export-options)))
 
-
-;;;###autoload
-(defmacro posthtml-filter-export-output (&rest body)
-  "add a posthtml filter to the default export process"
-  `(add-to-list 'org-export-filter-final-output-functions (posthtml ,@body)))
-
-;;;###autoload
-(defmacro posthtml-add-export-filter (&rest body)
-  "add a posthtml filter to the default export process,
-returns an org export filter lambda"
-  `(lambda (&optional project-properties) (posthtml-filter-export-output ,@body)))
-
-
-(defun posthtml-render (contents &optional doctype)
-  "return DOCTYPE and CONTENTS as a string"
-  (format "%s%s"
-          (if doctype (concat doctype "\n") "")
-          (if (listp contents)
-              (replace-regexp-in-string
-               "\n+<" "<" (replace-regexp-in-string
-                           ">\n+" ">" (posthtml-parse-esxml contents)))
-            contents)))
-
-(defvar posthtml-special-chars '("amp" "gt" "lt"))
-
-(defun posthtml-parse-html (contents)
-  (with-current-buffer (get-buffer-create " *posthtml*")
-    (erase-buffer)
-    (insert contents)
-    (loop for c in posthtml-special-chars do
-          (goto-char 1)
-          (while (search-forward (concat "&" c ";") nil t)
-            (replace-match (concat "%%" c "%%") nil t)))
-    (libxml-parse-html-region (point-min) (point-max))))
-
-(defun posthtml-parse-esxml (contents)
-  (with-current-buffer (get-buffer-create " *posthtml*")
-    (erase-buffer)
-    (insert (esxml-to-xml contents))
-    (loop for c in posthtml-special-chars do
-          (goto-char 1)
-          (while (search-forward (concat "%%" c "%%") nil t)
-            (replace-match (concat "&" c ";") nil t)))
-    (goto-char 1)
-    (while (search-forward "<comment>" nil t) (replace-match "<!--" nil t))
-    (goto-char 1)
-    (while (search-forward "</comment>" nil t) (replace-match "-->" nil t))
-    (buffer-string)))
-
-
-(defvar posthtml-fn-tokens
-  '(:append posthtml-append :prepend posthtml-prepend :attr posthtml-attribute))
-
-(defun posthtml$each (container selector &optional fn &rest args)
-  "Query CONTAINER for SELECTOR; apply each found element and
-ARGS to FN, return results.
-
-CONTAINER is an esxml list, SELECTOR is a vector; ie [html body].
-
-The following shorthands are available for FN;
-:append for 'posthtml-append
-:prepend for 'posthtml-prepend
-:attr for 'posthtml-attribute"
-  (if fn
-      (setq fn (or (plist-get posthtml-fn-tokens fn) fn))
-    (setq fn 'identity))
-  (mapcar (lambda (element) (apply fn element args))
-          (enlive-query-all container selector)))
+;; selectors
+;; *posthtml$ (container selector &optional fn &rest args)*
+;; #+BEGIN_EXAMPLE
+;;   (posthtml$ esxml-container [html] 'posthtml-append "this")
+;;   ($ [html] :append "this")
+;;   ($ [html] (lambda (container this) (posthtml-append container this)) "this")
+;; #+END_EXAMPLE
 
 (defun posthtml$ (container selector &optional fn &rest args)
   "Query CONTAINER for SELECTOR; apply found element and ARGS
 to FN, return results.
 
-CONTAINER is an esxml list, SELECTOR is a vector; ie [html body].
+CONTAINER is an esxml list, SELECTOR is a vector; ie [html body]."
+  (apply (posthtml--fn-tokens fn)
+         (enlive-query container selector)
+         args))
 
-The following shorthands are available for FN;
-:append for 'posthtml-append
-:prepend for 'posthtml-prepend
-:attr for 'posthtml-attribute"
-  (if fn
-      (setq fn (or (plist-get posthtml-fn-tokens fn) fn))
-    (setq fn 'identity))
-  (apply fn (enlive-query container selector) args))
 
+;; *posthtml$each (container selector &optional fn &rest args)*
+;; #+BEGIN_EXAMPLE
+;;   (posthtml$each esxml-container [body p] 'posthtml-append "this")
+;;   ($each [body p] :append "this")
+;;   ($each [body p] (lambda (element this) (posthtml-append element this)) "this")
+;; #+END_EXAMPLE
+
+(defun posthtml$each (container selector &optional fn &rest args)
+  "Query CONTAINER for SELECTOR; apply each found element and
+ARGS to FN, return results.
+
+CONTAINER is an esxml list, SELECTOR is a vector; ie [html body]."
+  (let ((fn (posthtml--fn-tokens fn)))
+    (mapcar (lambda (element) (apply fn element args))
+            (enlive-query-all container selector))))
+
+;; dom manipulation
+;; :PROPERTIES:
+;; :header-args+: :comments org
+;; :END:
+;; - posthtml-append (container &optional element)
 
 (defun posthtml-append (container &optional element)
   "Append ELEMENT to CONTAINER.
@@ -176,6 +125,9 @@ CONTAINER is an esxml list, ELEMENT is a list or a string."
     (if (= 1 (length container))
         (nconc container (list '() element))
       (nconc container (list element)))))
+
+
+;; - posthtml-prepend (container &optional element)
 
 (defun posthtml-prepend (container &optional element)
   "Prepend ELEMENT to CONTAINER.
@@ -187,6 +139,9 @@ CONTAINER is an esxml list, ELEMENT is a list or a string."
       (setf (nthcdr 2 container)
             (append (list element) (nthcdr 2 container))))
     container))
+
+;; attributes
+;; - posthtml-attribute (element attribute &optional values)
 
 (defun posthtml-attribute (element attribute &optional values)
   "Return ELEMENT ATTRIBUTE; with VALUES argument, add ATTRIBUTE
@@ -212,6 +167,58 @@ ELEMENT is an esxml list, ATTRIBUTE and VALUES are strings."
          (listp attributes)
          (cdr (assoc attribute (nth 1 element))))))
 
+
+;; - posthtml-attribute-set (element attribute &optional values)
+
+(defun posthtml-attribute-set (element attribute &optional values)
+  "set ELEMENT ATTRIBUTE to VALUES"
+  (let ((new-attribute (make-symbol (format "%s" attribute)))
+        (value (format "%s" values)))
+    (setf (nth 1 element) (list (cons new-attribute value)))))
+
+;; private functions                             :noexport:
+
+(defun posthtml--html-to-esxml (contents)
+  (with-temp-buffer
+    (insert (substring-no-properties contents))
+    (loop for token in
+          '(("&amp;" . "%%amp%%")
+            ("&lt;" . "%%lt%%")
+            ("&gt;" . "%%gt%%"))
+          do
+          (goto-char (point-min))
+          (while (search-forward (car token) nil t)
+            (replace-match (cdr token) nil t)))
+    (libxml-parse-html-region (point-min) (point-max))))
+
+(defun posthtml--esxml-to-html (contents)
+  (with-temp-buffer
+    (insert (esxml-to-xml contents))
+    (loop for token in
+          '(("&amp;" . "%%amp%%")
+            ("&lt;" . "%%lt%%")
+            ("&gt;" . "%%gt%%"))
+          do
+          (goto-char (point-min))
+          (while (search-forward (cdr token) nil t)
+            (replace-match (car token) nil t)))
+    (save-excursion
+      (while (search-forward "<comment>" nil t) (replace-match "<!--" nil t)))
+    (save-excursion
+      (while (search-forward "</comment>" nil t) (replace-match "-->" nil t)))
+    (loop for element in
+          '("figure" "a" "script" "style")
+          do
+          (goto-char (point-min))
+          (while (search-forward-regexp (format "<\\(%s\\).*?\\(/>\\)" element) nil t)
+            (replace-match "></\\1>" nil nil nil 2)))
+    (buffer-string)))
+
+(defun posthtml--fn-tokens (&optional fn)
+  (if (not fn) 'identity
+    (or (plist-get
+         '(:append posthtml-append :prepend posthtml-prepend :attr posthtml-attribute) fn)
+        fn)))
 
 (provide 'posthtml)
 ;;; posthtml.el ends here
