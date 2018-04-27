@@ -6,7 +6,7 @@
 output; a macro that gives access to the `DOM` structure, allowing for
 querying and modification with `CSS`-like selectors.
 
--   [github.com/elolaszlo/posthtml](https://github.com/elolaszlo/posthtml)
+-   [github.com/balddotcat/posthtml](https://github.com/balddotcat/posthtml)
 -   [bald.cat/code/posthtml](http://bald.cat/code/posthtml)
 
 It takes an `HTML` string, or the final `HTML` output of an `org mode`
