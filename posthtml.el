@@ -5,7 +5,7 @@
 ;; Created: August 2016
 ;; Updated: April 2018
 ;; Description: post HTML rendering filters for org-export
-;; Homepage: http://bald.cat/code/posthtml
+;; Homepage: http://bald.cat/posthtml
 ;; Version: 0.4.0
 ;; Package-Requires: ((esxml "20160703.1417")(enlive "20150824.549"))
 ;;
