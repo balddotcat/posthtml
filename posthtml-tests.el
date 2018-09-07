@@ -20,11 +20,16 @@
   (should (string= "<html><body class=\"this that\" id=\"this\"/></html>"
                    (posthtml:filter "<html><body class=\"this\"/></html>" nil
                                     ($ [body] :attr 'class 'that)
-                                    ($ [body] :attr 'id 'this))))
+                                    ($ [body] :attr 'id 'this)))))
 
+(ert-deftest posthtml-set-attribute ()
   (should (string= "<html><body class=\"that\"/></html>"
                    (posthtml:filter "<html><body class=\"this\"/></html>" nil
-                                    ($ [body] 'posthtml-attribute-set 'class 'that)))))
+                                    ($ [body] 'posthtml-attribute-set 'class 'that))))
+
+  (should (string= "<html><body id=\"id\"/></html>"
+                   (posthtml:filter "<html><body id=\"id\" class=\"this\"/></html>" nil
+                                    ($ [body] 'posthtml-attribute-set 'class "")))))
 
 (ert-deftest posthtml--doctype ()
   (should (string= "<html/>" (posthtml:filter "<html/>")))

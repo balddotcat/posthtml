@@ -171,10 +171,26 @@ ELEMENT is an esxml list, ATTRIBUTE and VALUES are strings."
 ;; - posthtml-attribute-set (element attribute &optional values)
 
 (defun posthtml-attribute-set (element attribute &optional values)
-  "set ELEMENT ATTRIBUTE to VALUES"
-  (let ((new-attribute (make-symbol (format "%s" attribute)))
-        (value (format "%s" values)))
-    (setf (nth 1 element) (list (cons new-attribute value)))))
+  (let ((attributes (nth 1 element))
+        (new-attribute (make-symbol (format "%s" attribute)))
+        (value (format "%s" (or values ""))))
+    (if (not (string= "" value))
+        (cond ((null attributes)
+               (setf (nth 1 element)
+                     (list (cons new-attribute value))))
+              ((listp attributes)
+               (let ((current-attribute (assoc attribute (nth 1 element))))
+                 (if current-attribute
+                     (setcdr current-attribute value)
+                   (setf (nth 1 element)
+                         (nconc (nth 1 element)
+                                (list (cons new-attribute value))))))))
+      (when (and (not (null attributes))
+                 (listp attributes))
+        (let ((current-attribute (assoc attribute attributes)))
+          (when current-attribute
+            (setf (nth 1 element)
+                  (remove current-attribute attributes))))))))
 
 ;; private functions                             :noexport:
 
