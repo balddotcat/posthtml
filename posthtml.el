@@ -3,7 +3,7 @@
 
 ;; Author: Elo Laszlo <hello at bald dot cat>
 ;; Created: December 2018
-;; Package-Version: 0.5.1
+;; Package-Version: 0.5.2
 ;; Keywords: files
 ;; Homepage: http://bald.cat/posthtml
 ;; Package-Requires: ((emacs "25.3.1") (esxml "20171129.807") (enlive "20170725.1417"))

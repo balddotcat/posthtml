@@ -88,8 +88,6 @@ Here is the result of running this contrived test case, with input on the left.
 -   **`:attrs`:** posthtml-attributes
 -   **`:attrs-set`:** posthtml-attributes-set
 
--   attributes can start with or without an initial `:`
-
 
 ## posthtml-find `esxml selector`
 
@@ -98,21 +96,25 @@ Wrapper function to [enlive-query](https://github.com/tali713/esxml/blob/master/
 
 ### posthtml-findall `esxml selector`
 
+**Selectors** are `vector` objects, resembling **CSS** selectors which can have `id`-s, `classes`, `attributes` - as per **enlive**.
+
 
 ## posthtml-append `esxml element`
 
-Element can be a string or an =esxml= element.
+Element can be a string or an `esxml` element.
 
 
 ## posthtml-prepend `esxml element`
 
-Element can be a string or an =esxml= element.
+Element can be a string or an `esxml` element.
 
 
 ## posthtml-attribute `esxml attribute &optional value force`
 
 Returns the value of an `esxml` element's attribute. Optionally, when provided with
 a `value`, set or add `attribute` to element - set as only property with `force`.
+
+-   attributes can start with or without an initial `:`
 
 
 ### posthtml-attributes `esxml &rest attributes`
