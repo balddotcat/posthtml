@@ -3,7 +3,7 @@
 
 ;; Author: Elo Laszlo <hello at bald dot cat>
 ;; Created: December 2018
-;; Package-Version: 0.5.2
+;; Package-Version: 0.5.3
 ;; Keywords: files
 ;; Homepage: http://bald.cat/posthtml
 ;; Package-Requires: ((emacs "25.3.1") (esxml "20171129.807") (enlive "20170725.1417"))
@@ -24,6 +24,28 @@
 ;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 ;;; Commentary:
+;; posthtml provides a fluent interface to decorating a string of HTML like
+;; "<ul><li/><li/></ul>" - to add attributes such as class or id to elements,
+;; or to do custom processing.
+;;
+;;     (posthtml-decorate "<ul><li/><li/></ul>"
+;;                        '($ [ul] :attr :id 'CONTAINER)
+;;                        '($each [ul li] :attr :class 'ELEMENT))
+;;
+;; The string is parsed into an esxml representation of the DOM tree by
+;; libxml-parse-html-region - the defined decorators are applied, and a string
+;; rendered via esxml-to-xml is returned. Querying is done with enlive.
+;;
+;; As a typical use case scenario, org-export-filter-final-output-functions provide
+;; access to the final output of any org-export, or org-publishing sequence; this
+;; list consists of the last functions called with the rendered output, their output
+;; being what's written to disk.
+;;
+;;     (add-to-list 'org-export-filter-final-output-functions
+;;                  (lambda (contents backend info)
+;;                    (posthtml-decorate contents
+;;                                       '($ [body] :attr :style "background-color: black;"))))
+;;
 
 ;;; Code:
 (require 'esxml)                        ; esxml-to-xml
