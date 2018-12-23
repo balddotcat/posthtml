@@ -1,14 +1,15 @@
-;;; posthtml.el --- post HTML rendering filters for org-export
-;; Copyright (C) Elo Laszlo 2017
+;;; posthtml.el --- decorate HTML string DOM with CSS-like selectors -*- lexical-binding: t; -*-
+;; Copyright (C) 2018 Elo Laszlo
 
 ;; Author: Elo Laszlo <hello at bald dot cat>
-;; Created: August 2016
-;; Updated: April 2018
-;; Description: post HTML rendering filters for org-export
+;; Created: December 2018
+;; Package-Version: 0.5.0
+;; Keywords: files
 ;; Homepage: http://bald.cat/posthtml
-;; Version: 0.4.0
-;; Package-Requires: ((esxml "20160703.1417")(enlive "20150824.549"))
-;;
+;; Package-Requires: ((emacs "25.3.1") (esxml "20171129.807") (enlive "20170725.1417"))
+;; This file is not part of GNU Emacs
+
+;;; License:
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
@@ -23,111 +24,135 @@
 ;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 ;;; Commentary:
-;; An emacs org-mode export filter for cosmetic touchups of html output;
-;; a set of macros that give access to the DOM structure, allowing for
-;; querying and modification with CSS like selectors.
-;;
-;; ($each [header nav li]
-;;        (lambda (nav-element uri)
-;;          (let ((href (posthtml$ nav-element [a] :attr 'href)))
-;;            (when (and (not (string= "/" href))
-;;                       (string-prefix-p href uri t))
-;;              (posthtml-attribute nav-element 'class 'current))))
-;;        (page-uri info))
 
 ;;; Code:
 (require 'esxml)                        ; esxml-to-xml
 (require 'enlive)                       ; enlive-query, enlive-query-all
-(eval-when-compile (require 'cl))       ; lexical-let, cl-macrolet
-
-;; macros
-;; #+BEGIN_EXAMPLE
-;;   (posthtml:filter-final-output [...])
-;; #+END_EXAMPLE
 
 ;;;###autoload
-(defmacro posthtml:filter-final-output (&rest body)
-  "add a posthtml filter to the default export process
+(defun posthtml-decorate (contents &rest decorators)
+  "Decorate CONTENTS with each of DECORATORS.
 
-see org-export-filter-final-output-functions and
-    posthtml:filter"
-  `(add-to-list 'org-export-filter-final-output-functions
-                (lambda (contents backend info)
-                  (posthtml:filter contents info ,@body))))
+CONTENTS is a string containing an HTML structure, which is
+converted into an `esxml' representation of the DOM tree, as
+parsed by `libxml-parse-html-region'; returns edited string via
+`esxml-to-xml'.
 
-;;;###autoload
-(defmacro posthtml:filter (content &optional export-options &rest body)
-  "parse CONTENT with BODY
+The car of each decorator is a function called with an `esxml'
+parse-tree, and the decorator's cdr as args when provided."
+  (let* ((html-string (substring-no-properties contents))
+         (esxml-parse-tree (posthtml--html-to-esxml html-string)))
+    (concat (save-match-data
+              (if (eq nil (string-match "^\\(<!DOCTYPE[^>]+?>\n?\\)" html-string)) ""
+                (match-string 1 html-string)))
+            (posthtml--esxml-to-html
+             (let ((results (seq-reduce (lambda (contents decorator)
+                                          (apply (car decorator) contents (cdr decorator)))
+                                        (seq-filter 'posthtml--decorator decorators)
+                                        esxml-parse-tree)))
+               (if (eq nil (string-match "<html" html-string))
+                   (if (eq nil (string-match "<body" html-string))
+                       (car (cddr (enlive-query results [body])))
+                     (enlive-query results [body]))
+                 results))))))
 
-EXPORT-OPTIONS is lexically bound as INFO,
-CONTENT is lexically bounda as CONTENTS"
-  (let ((contents (make-symbol "contents"))
-        (info (make-symbol "info")))
-    `(funcall (lambda (,contents &optional ,info)
-                (lexical-let ((doctype (save-match-data
-                                         (if (eq nil (string-match "^\\(<!DOCTYPE[^>]+?>\n?\\)" ,contents)) ""
-                                           (match-string 1 ,contents))))
-                              (contents (posthtml--html-to-esxml ,contents))
-                              (info ,info))
-                  (cl-macrolet (($each (selector &optional fn &rest args)
-                                       `(funcall 'posthtml$each contents ,selector ,fn ,@args))
-                                ($ (selector &optional fn &rest args)
-                                   `(funcall 'posthtml$ contents ,selector ,fn ,@args)))
-                    ,@body)
-                  (concat doctype (posthtml--esxml-to-html contents))))
-              ,content ,export-options)))
+(defun posthtml--decorator (&optional param)
+  "Translates custom PARAM tokens to functions.
 
-;; selectors
-;; *posthtml$ (container selector &optional fn &rest args)*
-;; #+BEGIN_EXAMPLE
-;;   (posthtml$ esxml-container [html] 'posthtml-append "this")
-;;   ($ [html] :append "this")
-;;   ($ [html] (lambda (container this) (posthtml-append container this)) "this")
-;; #+END_EXAMPLE
+Please see `posthtml-decorate'."
+  (when param
+    (let* ((decorator (or (and (listp param) param)
+                          (list param)))
+           (action (cddr decorator)))
+      (pcase (car decorator)
+        ('$ (setf (car decorator) 'posthtml-apply))
+        ('$each (setf (car decorator) 'posthtml-apply-each)))
+      (when action
+        (pcase (car action)
+          (:append (setf (nth 2 decorator) 'posthtml-append))
+          (:prepend (setf (nth 2 decorator) 'posthtml-prepend))
+          (:attr (setf (nth 2 decorator) 'posthtml-attribute))
+          (:attr-set (setf (nth 2 decorator) (lambda (element &rest attributes) (apply 'posthtml-attributes-set element attributes))))
+          (:attrs (setf (nth 2 decorator) 'posthtml-attributes))
+          (:attrs-set (setf (nth 2 decorator) 'posthtml-attributes-set))))
+      decorator)))
 
-(defun posthtml$ (container selector &optional fn &rest args)
-  "Query CONTAINER for SELECTOR; apply found element and ARGS
-to FN, return results.
+(defun posthtml-apply (content selector fn &rest args)
+  "Within CONTENT find element with SELECTOR, apply it to FN with ARGS.
 
-CONTAINER is an esxml list, SELECTOR is a vector; ie [html body]."
-  (apply (posthtml--fn-tokens fn)
-         (enlive-query container selector)
-         args))
+CONTENT is an `esxml' list.  SELECTOR is a vector, as used by
+`enlive'.  ARGS are `eval'-d in the current environment."
+  (let ((esxml-parse-tree (posthtml-find content selector)))
+    (setf esxml-parse-tree (apply fn esxml-parse-tree (mapcar 'eval args)))
+    content))
 
+(defun posthtml-apply-each (content selector fn &rest args)
+  "Within CONTENT find each element with SELECTOR, apply it to FN with ARGS.
 
-;; *posthtml$each (container selector &optional fn &rest args)*
-;; #+BEGIN_EXAMPLE
-;;   (posthtml$each esxml-container [body p] 'posthtml-append "this")
-;;   ($each [body p] :append "this")
-;;   ($each [body p] (lambda (element this) (posthtml-append element this)) "this")
-;; #+END_EXAMPLE
+CONTENT is an esxml list.  SELECTOR is a vector, as used by
+`enlive'.  ARGS are `eval'-d in the current environment."
+  (dolist (esxml-parse-tree (posthtml-find-all content selector) content)
+    (setf esxml-parse-tree (apply fn esxml-parse-tree (mapcar 'eval args)))))
 
-(defun posthtml$each (container selector &optional fn &rest args)
-  "Query CONTAINER for SELECTOR; apply each found element and
-ARGS to FN, return results.
+(defun posthtml--html-to-esxml (contents)
+  "Translate CONTENTS, a string of HTML to an `esxml' parse-tree."
+  (with-temp-buffer
+    (insert (substring-no-properties contents))
+    (goto-char (point-min))
+    (loop for token in
+          '(("&amp;" . "%%amp%%")
+            ("&lt;" . "%%lt%%")
+            ("&gt;" . "%%gt%%"))
+          do
+          (save-excursion
+            (while (search-forward (car token) nil t)
+              (replace-match (cdr token) nil t))))
+    (libxml-parse-html-region (point-min) (point-max))))
 
-CONTAINER is an esxml list, SELECTOR is a vector; ie [html body]."
-  (let ((fn (posthtml--fn-tokens fn)))
-    (mapcar (lambda (element) (apply fn element args))
-            (enlive-query-all container selector))))
+(defun posthtml--esxml-to-html (contents)
+  "Translate CONTENTS, an `esxml' parse-tree, to an HTML string."
+  (with-temp-buffer
+    (insert (esxml-to-xml contents))
+    (goto-char (point-min))
+    (loop for token in
+          '(("&amp;" . "%%amp%%")
+            ("&lt;" . "%%lt%%")
+            ("&gt;" . "%%gt%%"))
+          do
+          (save-excursion
+            (while (search-forward (cdr token) nil t)
+              (replace-match (car token) nil t))))
+    (save-excursion
+      (while (search-forward "<comment>" nil t)
+        (replace-match "<!--" nil t)))
+    (save-excursion
+      (while (search-forward "</comment>" nil t)
+        (replace-match "-->" nil t)))
+    (loop for element in
+          '("figure" "script" "a" "style")
+          do
+          (save-excursion
+            (while (search-forward-regexp (format "<\\(%s\\).*?\\(/>\\)" element) nil t)
+              (replace-match "></\\1>" nil nil nil 2))))
+    (buffer-string)))
 
-;; dom manipulation
-;; :PROPERTIES:
-;; :header-args+: :comments org
-;; :END:
-;; - posthtml-append (container &optional element)
+(defun posthtml-find (content selector)
+  "Wrapper function to `enlive-query'"
+  (enlive-query content selector))
+
+(defun posthtml-find-all (content selector)
+  "Wrapper function to `enlive-query-all'"
+  (enlive-query-all content selector))
 
 (defun posthtml-append (container &optional element)
   "Append ELEMENT to CONTAINER.
 
 CONTAINER is an esxml list, ELEMENT is a list or a string."
   (when element
-    (if (= 1 (length container))
-        (nconc container (list '() element))
-      (nconc container (list element)))))
-
-
-;; - posthtml-prepend (container &optional element)
+    (if (> 3 (length container))
+        (setcdr container (list nil element))
+      (setf (nthcdr 2 container)
+            (list (nth 2 container) element)))))
 
 (defun posthtml-prepend (container &optional element)
   "Prepend ELEMENT to CONTAINER.
@@ -140,101 +165,57 @@ CONTAINER is an esxml list, ELEMENT is a list or a string."
             (append (list element) (nthcdr 2 container))))
     container))
 
-;; attributes
-;; - posthtml-attribute (element attribute &optional values)
+(defun posthtml-attribute (element attribute &optional value force)
+  "Returns ELEMENT's ATTRIBUTE value.
 
-(defun posthtml-attribute (element attribute &optional values)
-  "Return ELEMENT ATTRIBUTE; with VALUES argument, add ATTRIBUTE
-with VALUE to ELEMENT.
+With VALUE argument, add to ATTRIBUTE, VALUE. Optional FORCE sets
+ATTRIBUTE to VALUE. ELEMENT is an `esxml' list."
+  (let ((attribute (or (and (string= ":" (substring (format "%s" attribute) 0 1))
+                            (intern (substring (format "%s" attribute) 1 nil)))
+                       (identity attribute))))
+    (if value
+        (let* ((current-attribute (assq attribute (nth 1 element)))
+               (current-value (when current-attribute (cdr current-attribute))))
+          (if (and current-value (not force))
+              (posthtml-attribute-set element attribute (format "%s %s" current-value value))
+            (posthtml-attribute-set element attribute (format "%s" value))))
+      (let ((attributes (nth 1 element)))
+        (when (and (not (null attributes))
+                   (listp attributes))
+          (cdr (assq attribute attributes)))))))
 
-ELEMENT is an esxml list, ATTRIBUTE and VALUES are strings."
+(defun posthtml-attributes (element &rest attributes)
+  "Apply ELEMENT to `posthtml-attribute' with each of ATTRIBUTES."
+  (seq-reduce (lambda (element attribute)
+                (apply 'posthtml-attribute element attribute))
+              (seq-partition attributes 2)
+              element))
+
+(defun posthtml-attributes-set (element &rest attributes)
+  "Apply ELEMENT to `posthtml-attribute-set' with each of ATTRIBUTES."
+  (seq-reduce (lambda (element attribute)
+                (apply 'posthtml-attribute element (append attribute '(t))))
+              (seq-partition attributes 2)
+              element))
+
+(defun posthtml-attribute-set (element attribute value)
+  "Set ELEMENT's ATTRIBUTE to VALUE."
   (let ((attributes (nth 1 element)))
-    (when values
-      (let ((new-attribute (make-symbol (format "%s" attribute)))
-            (value (format "%s" values)))
+    (if (or (null value) (string= "" value))
+        (when (and (not (null attributes))
+                   (listp attributes))
+          (let ((current-attribute (assq attribute attributes)))
+            (when current-attribute
+              (setf (nth 1 element)
+                    (remove current-attribute attributes)))))
+      (let ((value (format "%s" value)))
         (cond ((null attributes)
                (setf (nth 1 element)
-                     (list (cons new-attribute value))))
+                     (list (cons attribute value))))
               ((listp attributes)
-               (let ((current-attribute (assoc attribute (nth 1 element))))
-                 (if current-attribute
-                     (setcdr current-attribute
-                             (format "%s %s" (cdr current-attribute) value))
-                   (setf (nth 1 element)
-                         (nconc (nth 1 element)
-                                (list (cons new-attribute value))))))))))
-    (and (not (null attributes))
-         (listp attributes)
-         (cdr (assoc attribute (nth 1 element))))))
-
-
-;; - posthtml-attribute-set (element attribute &optional values)
-
-(defun posthtml-attribute-set (element attribute &optional values)
-  (let ((attributes (nth 1 element))
-        (new-attribute (make-symbol (format "%s" attribute)))
-        (value (format "%s" (or values ""))))
-    (if (not (string= "" value))
-        (cond ((null attributes)
-               (setf (nth 1 element)
-                     (list (cons new-attribute value))))
-              ((listp attributes)
-               (let ((current-attribute (assoc attribute (nth 1 element))))
-                 (if current-attribute
-                     (setcdr current-attribute value)
-                   (setf (nth 1 element)
-                         (nconc (nth 1 element)
-                                (list (cons new-attribute value))))))))
-      (when (and (not (null attributes))
-                 (listp attributes))
-        (let ((current-attribute (assoc attribute attributes)))
-          (when current-attribute
-            (setf (nth 1 element)
-                  (remove current-attribute attributes))))))))
-
-;; private functions                             :noexport:
-
-(defun posthtml--html-to-esxml (contents)
-  (with-temp-buffer
-    (insert (substring-no-properties contents))
-    (loop for token in
-          '(("&amp;" . "%%amp%%")
-            ("&lt;" . "%%lt%%")
-            ("&gt;" . "%%gt%%"))
-          do
-          (goto-char (point-min))
-          (while (search-forward (car token) nil t)
-            (replace-match (cdr token) nil t)))
-    (libxml-parse-html-region (point-min) (point-max))))
-
-(defun posthtml--esxml-to-html (contents)
-  (with-temp-buffer
-    (insert (esxml-to-xml contents))
-    (loop for token in
-          '(("&amp;" . "%%amp%%")
-            ("&lt;" . "%%lt%%")
-            ("&gt;" . "%%gt%%"))
-          do
-          (goto-char (point-min))
-          (while (search-forward (cdr token) nil t)
-            (replace-match (car token) nil t)))
-    (save-excursion
-      (while (search-forward "<comment>" nil t) (replace-match "<!--" nil t)))
-    (save-excursion
-      (while (search-forward "</comment>" nil t) (replace-match "-->" nil t)))
-    (loop for element in
-          '("figure" "a" "script" "style")
-          do
-          (goto-char (point-min))
-          (while (search-forward-regexp (format "<\\(%s\\).*?\\(/>\\)" element) nil t)
-            (replace-match "></\\1>" nil nil nil 2)))
-    (buffer-string)))
-
-(defun posthtml--fn-tokens (&optional fn)
-  (if (not fn) 'identity
-    (or (plist-get
-         '(:append posthtml-append :prepend posthtml-prepend :attr posthtml-attribute) fn)
-        fn)))
+               (setf (nth 1 element) (append (delq (assq attribute attributes) attributes)
+                                             (list (cons attribute value)))))))
+        element)))
 
 (provide 'posthtml)
 ;;; posthtml.el ends here
