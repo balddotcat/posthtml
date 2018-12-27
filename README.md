@@ -36,7 +36,7 @@ being what's written to disk.
     '($ [h1] :attrs-set :id 'TWO :class "") ; set h1's id to TWO, remove all classes
     '($ [ul] :attr-set :id "")              ; remove ul's id attribute
 
-`posthtml-decorate` translates the syntax decorators into a calls to `posthtml-apply` or
+`posthtml-decorate` translates the syntax decorators into a call to `posthtml-apply` or
 `posthtml-apply-each`, respectively. They are responsible for querying `CONTAINER`
 for `SELECTOR`, and applying (each) found element - as an `esxml` parse-tree - and
 `ARGS` to `FN`.

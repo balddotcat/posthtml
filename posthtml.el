@@ -3,7 +3,7 @@
 
 ;; Author: Elo Laszlo <hello at bald dot cat>
 ;; Created: December 2018
-;; Package-Version: 0.5.3
+;; Package-Version: 0.5.4
 ;; Keywords: files
 ;; Homepage: http://bald.cat/posthtml
 ;; Package-Requires: ((emacs "25.3.1") (esxml "20171129.807") (enlive "20170725.1417"))
@@ -34,7 +34,7 @@
 ;;
 ;; The string is parsed into an esxml representation of the DOM tree by
 ;; libxml-parse-html-region - the defined decorators are applied, and a string
-;; rendered via esxml-to-xml is returned. Querying is done with enlive.
+;; rendered via esxml-to-xml is returned.  Querying is done with enlive.
 ;;
 ;; As a typical use case scenario, org-export-filter-final-output-functions provide
 ;; access to the final output of any org-export, or org-publishing sequence; this
@@ -159,15 +159,19 @@ CONTENT is an esxml list.  SELECTOR is a vector, as used by
     (buffer-string)))
 
 (defun posthtml-find (content selector)
-  "Wrapper function to `enlive-query'"
+  "Query CONTENT for SELECTOR.
+
+Wrapper function to `enlive-query'."
   (enlive-query content selector))
 
 (defun posthtml-find-all (content selector)
-  "Wrapper function to `enlive-query-all'"
+  "Query CONTENT for every SELECTOR.
+
+Wrapper function to `enlive-query-all'"
   (enlive-query-all content selector))
 
 (defun posthtml-append (container &optional element)
-  "Append ELEMENT to CONTAINER.
+  "To CONTAINER, append ELEMENT.
 
 CONTAINER is an esxml list, ELEMENT is a list or a string."
   (when element
@@ -177,7 +181,7 @@ CONTAINER is an esxml list, ELEMENT is a list or a string."
             (list (nth 2 container) element)))))
 
 (defun posthtml-prepend (container &optional element)
-  "Prepend ELEMENT to CONTAINER.
+  "To CONTAINER, prepend ELEMENT.
 
 CONTAINER is an esxml list, ELEMENT is a list or a string."
   (when element
@@ -188,10 +192,10 @@ CONTAINER is an esxml list, ELEMENT is a list or a string."
     container))
 
 (defun posthtml-attribute (element attribute &optional value force)
-  "Returns ELEMENT's ATTRIBUTE value.
+  "Return ELEMENT's ATTRIBUTE value.
 
-With VALUE argument, add to ATTRIBUTE, VALUE. Optional FORCE sets
-ATTRIBUTE to VALUE. ELEMENT is an `esxml' list."
+With VALUE argument, add to ATTRIBUTE, VALUE.  Optional FORCE sets
+ATTRIBUTE to VALUE.  ELEMENT is an `esxml' list."
   (let ((attribute (or (and (string= ":" (substring (format "%s" attribute) 0 1))
                             (intern (substring (format "%s" attribute) 1 nil)))
                        (identity attribute))))
