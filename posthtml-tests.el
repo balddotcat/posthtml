@@ -12,14 +12,76 @@
   `(should (string= ,output
                     (posthtml-decorate ,input ,@body))))
 
-(defmacro render (input &rest body)
-  "Print results of calling `posthtml-decorate' with INPUT and
-BODY to stdout."
-  `(print (posthtml-decorate ,input ,@body)))
-
 (posthtml-test doctype
                (decorate "<html/>" "<html/>")
                (decorate "<!DOCTYPE html><html/>" "<!DOCTYPE html><html/>"))
+
+(posthtml-test append
+               (decorate "<ul><li/></ul>" "<ul><li>APPEND</li></ul>"
+                         '(:append li "APPEND"))
+               (decorate "<ul><li/></ul>" "<ul><li/> APPEND</ul>"
+                         '(posthtml-append ul " APPEND")))
+
+(posthtml-test prepend
+               (decorate "<h1>title</h1>" "<h1>PREPEND title</h1>"
+                         '(:prepend h1 "PREPEND "))
+               (decorate "<ul><li/></ul>" "<ul>PREPEND <li/></ul>"
+                         '(posthtml-prepend ul "PREPEND ")))
+
+(posthtml-test set-attribute
+               (decorate "<html><body class=\"this\"/></html>"
+                         "<html><body class=\"that\" id=\"id\"/></html>"
+                         '(:set body :class "that")
+                         '(:set body :id "id"))
+               (decorate "<html><body id=\"id\" class=\"this\"/></html>"
+                         "<html><body id=\"id\"/></html>"
+                         '(posthtml-set body :class ""))
+               (decorate "<html><body/></html>"
+                         "<html><body id=\"id\" class=\"class2\"/></html>"
+                         '(:set body :id "id" :class "class1" :class "class2")))
+
+(posthtml-test add-attribute
+               (decorate "<html><body class=\"this\"/></html>"
+                         "<html><body class=\"this that\" id=\"this\"/></html>"
+                         '(:add body :class "that" :id "this")))
+
+(posthtml-test tokens
+               (decorate "<ul/>" "<ul id=\"id\"/>"
+                         '(:id ul "id"))
+               (decorate "<ul/>" "<ul class=\"class\"/>"
+                         '(:class ul "class")))
+
+(posthtml-test readme-example
+               (decorate (concat "<html><body>"
+                                 "<h1 class=\"ONE\">headline</h1>"
+                                 "<ul id=\"ONE\">"
+                                 "<li><a href=\"/uri-one\">uri</a></li>"
+                                 "<li><a href=\"/uri-two\">uri</a></li>"
+                                 "<li><a href=\"/uri-three\">uri</a></li>"
+                                 "</ul>"
+                                 "</body></html>")
+                         (concat "<html><body>"
+                                 "<h1 id=\"TWO\">headline APPEND</h1>"
+                                 "<ul class=\"COLUMNS COLUMNSWIDTH3\">"
+                                 "<li><a href=\"/uri-one\">uri</a></li>"
+                                 "<li class=\"CURRENT\"><a href=\"/uri-two\">uri</a></li>"
+                                 "<li><a href=\"/uri-three\">uri</a></li>"
+                                 "</ul>"
+                                 "</body></html>")
+                         '(:append h1 " APPEND")
+                         '(:set ul :class "COLUMNS")
+                         '(:set h1 :id "TWO" :class "")
+                         '(:set ul :id "")
+                         '((lambda (list-element current-uri)
+                                   (let ((link-uri (posthtml-attr (posthtml-find list-element 'a) 'href)))
+                                     (when (string= link-uri current-uri)
+                                       (posthtml-set list-element :class "CURRENT"))))
+                           each "ul li" "/uri-two")
+                         '((lambda (ul)
+                             (posthtml-add ul :class (format
+                                                      "COLUMNSWIDTH%s"
+                                                      (length (posthtml-find-all ul "li")))))
+                           "ul")))
 
 (posthtml-test special-characters
                (decorate "<html><body>&amp; &gt; &lt;</body></html>"
@@ -40,109 +102,3 @@ BODY to stdout."
                                  "<script></script>"
                                  "<style type=\"text/css\"></style>"
                                  "</body></html>")))
-
-(posthtml-test append
-               (decorate "<ul><li/></ul>" "<ul><li>APPEND</li></ul>"
-                         '(posthtml-apply [li] posthtml-append "APPEND"))
-               (decorate "<ul><li/></ul>" "<ul><li/>APPEND</ul>"
-                         '(posthtml-apply [ul] posthtml-append "APPEND"))
-               (decorate "<ul><li/></ul>" "<ul><li/>APPEND</ul>"
-                         '(posthtml-apply [ul] :append "APPEND"))
-               (decorate "<ul><li/></ul>" "<ul><li/>APPEND</ul>"
-                         '($ [ul] :append "APPEND")))
-
-(posthtml-test prepend
-               (decorate "<h1>title</h1>" "<h1>PREPEND title</h1>"
-                         '(posthtml-apply [h1] posthtml-prepend "PREPEND "))
-               (decorate "<h1>title</h1>" "<h1>PREPEND title</h1>"
-                         '(posthtml-apply [h1] :prepend "PREPEND "))
-               (decorate "<h1>title</h1>" "<h1>PREPEND title</h1>"
-                         '($ [h1] :prepend "PREPEND ")))
-
-(posthtml-test attribute
-               (decorate "<html><body class=\"this\"/></html>"
-                         "<html><body class=\"this that\" id=\"this\"/></html>"
-                         '(posthtml-apply [body] posthtml-attribute 'class 'that)
-                         '(posthtml-apply [body] posthtml-attribute 'id 'this))
-               (decorate "<html><body class=\"this\"/></html>"
-                         "<html><body class=\"this that\" id=\"this\"/></html>"
-                         '(posthtml-apply [body] :attr 'class 'that)
-                         '(posthtml-apply [body] :attr 'id 'this))
-               (decorate "<html><body class=\"this\"/></html>"
-                         "<html><body class=\"this that\" id=\"this\"/></html>"
-                         '($ [body] :attr 'class 'that)
-                         '($ [body] :attr 'id 'this)))
-
-(posthtml-test set-attribute
-               (decorate "<html><body class=\"this\"/></html>"
-                         "<html><body class=\"that\"/></html>"
-                         '(posthtml-apply [body] posthtml-attribute-set 'class 'that))
-               (decorate "<html><body class=\"this\"/></html>"
-                         "<html><body class=\"that\"/></html>"
-                         '(posthtml-apply [body] :attr-set 'class 'that))
-               (decorate "<html><body class=\"this\"/></html>"
-                         "<html><body class=\"that\"/></html>"
-                         '($ [body] :attr-set 'class 'that))
-               (decorate "<html><body id=\"id\" class=\"this\"/></html>"
-                         "<html><body id=\"id\"/></html>"
-                         '(posthtml-apply [body] posthtml-attribute-set 'class ""))
-               (decorate "<html><body id=\"id\" class=\"this\"/></html>"
-                         "<html><body id=\"id\"/></html>"
-                         '(posthtml-apply [body] :attr-set 'class ""))
-               (decorate "<html><body id=\"id\" class=\"this\"/></html>"
-                         "<html><body id=\"id\"/></html>"
-                         '($ [body] :attr-set 'class "")))
-
-(posthtml-test multiple-attributes
-               (decorate "<ul><li/></ul>"
-                         "<ul class=\"ONE TWO\"><li>APPEND</li></ul>"
-                         '($ [li] :append "APPEND")
-                         '($ [ul] :attr 'class 'ONE)
-                         '($ [ul] :attr 'class 'TWO))
-               (decorate "<ul><li/></ul>"
-                         "<ul class=\"ONE TWO\"><li class=\"ONE TWO\" id=\"TWO\"/></ul>"
-                         '($ [ul] posthtml-attributes 'class 'ONE 'class 'TWO)
-                         '($ [li] :attrs 'class 'ONE 'class 'TWO)
-                         '($ [li] :attrs-set 'id 'ONE 'id 'TWO)))
-
-(posthtml-test attribute-tokens
-               (decorate "<ul><li/></ul>"
-                         "<ul><li id=\"ONE\" class=\"TWO\"/></ul>"
-                         '($ [li] :attrs :id 'ONE :class 'TWO)))
-
-(posthtml-test apply-each
-               (decorate "<ul><li/><li/><li/></ul>"
-                         "<ul><li>APPEND</li><li>APPEND</li><li>APPEND</li></ul>"
-                         '($each [ul li] :append "APPEND")))
-
-(posthtml-test readme-example
-               (decorate (concat "<html><body>"
-                                 "<h1 class=\"ONE\">headline</h1>"
-                                 "<ul id=\"ONE\">"
-                                 "<li><a href=\"/uri-one\">uri</a></li>"
-                                 "<li><a href=\"/uri-two\">uri</a></li>"
-                                 "<li><a href=\"/uri-three\">uri</a></li>"
-                                 "</ul>"
-                                 "</body></html>")
-                         (concat "<html><body>"
-                                 "<h1 id=\"TWO\">headline APPEND</h1>"
-                                 "<ul class=\"COLUMNS COLUMNSWIDTH3\">"
-                                 "<li><a href=\"/uri-one\">uri</a></li>"
-                                 "<li class=\"CURRENT\"><a href=\"/uri-two\">uri</a></li>"
-                                 "<li><a href=\"/uri-three\">uri</a></li>"
-                                 "</ul>"
-                                 "</body></html>")
-                         '($ [h1] :append " APPEND")
-                         '($ [ul] :attr :class 'COLUMNS)
-                         '($ [h1] :attrs-set :id 'TWO :class "")
-                         '($ [ul] :attr-set :id "")
-                         '($each [ul li]
-                                 (lambda (list-element current-uri)
-                                   (let ((link-uri (posthtml-attribute (posthtml-find list-element [a]) 'href)))
-                                     (when (string= link-uri current-uri)
-                                       (posthtml-attribute list-element :class 'CURRENT))))
-                                 "/uri-two")
-                         '($ [ul]
-                             (lambda (ul)
-                               (posthtml-attribute ul :class (format "COLUMNSWIDTH%s"
-                                                                     (length (posthtml-find-all ul [li]))))))))

@@ -1,12 +1,12 @@
 ;;; posthtml.el --- decorate HTML string DOM with CSS-like selectors -*- lexical-binding: t; -*-
-;; Copyright (C) 2018 Elo Laszlo
+;; Copyright (C) 2019 Elo Laszlo
 
 ;; Author: Elo Laszlo <hello at bald dot cat>
 ;; Created: December 2018
-;; Package-Version: 0.5.4
+;; Package-Version: 0.6.0
 ;; Keywords: files
 ;; Homepage: http://bald.cat/posthtml
-;; Package-Requires: ((emacs "25.3.1") (esxml "20171129.807") (enlive "20170725.1417"))
+;; Package-Requires: ((emacs "25.3.1") (esxml "20171129.807"))
 ;; This file is not part of GNU Emacs
 
 ;;; License:
@@ -24,100 +24,160 @@
 ;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 ;;; Commentary:
-;; posthtml provides a fluent interface to decorating a string of HTML like
-;; "<ul><li/><li/></ul>" - to add attributes such as class or id to elements,
-;; or to do custom processing.
+;;
+;; posthtml provides a fluent interface to decorating a
+;; string of HTML, like "<ul><li/><li/></ul>" - to add
+;; attributes such as class or id to elements, or to do
+;; custom processing.
 ;;
 ;;     (posthtml-decorate "<ul><li/><li/></ul>"
-;;                        '($ [ul] :attr :id 'CONTAINER)
-;;                        '($each [ul li] :attr :class 'ELEMENT))
+;;     		               '(:id ul "ID")
+;;     		               '(:class each "ul li" "CLASSNAME")
+;;     		               '((lambda (li)
+;;     		                  (posthtml-append li "CONTENT"))
+;;     		                  "ul>li"))
 ;;
-;; The string is parsed into an esxml representation of the DOM tree by
-;; libxml-parse-html-region - the defined decorators are applied, and a string
-;; rendered via esxml-to-xml is returned.  Querying is done with enlive.
-;;
-;; As a typical use case scenario, org-export-filter-final-output-functions provide
-;; access to the final output of any org-export, or org-publishing sequence; this
-;; list consists of the last functions called with the rendered output, their output
-;; being what's written to disk.
-;;
-;;     (add-to-list 'org-export-filter-final-output-functions
-;;                  (lambda (contents backend info)
-;;                    (posthtml-decorate contents
-;;                                       '($ [body] :attr :style "background-color: black;"))))
-;;
+;; The string is parsed into an esxml (DOM) tree structure
+;; with libxml-parse-html-region - the defined decorators
+;; are applied in sequence, and a string rendered via
+;; esxml-to-xml is returned. Querying is done with
+;; esxml-query.
 
 ;;; Code:
-(require 'esxml)                        ; esxml-to-xml
-(require 'enlive)                       ; enlive-query, enlive-query-all
+(require 'esxml)
+(require 'esxml-query)
+(require 'dom)
+
+(defvar posthtml-decorator-token-alist
+  '((append . posthtml-append)
+    (prepend . posthtml-prepend)
+    (set . posthtml-set)
+    (add . posthtml-add)
+    (id (lambda (node value) (posthtml-set node :id value)))
+    (class (lambda (node value) (posthtml-set node :class value)))))
 
 ;;;###autoload
-(defun posthtml-decorate (contents &rest decorators)
-  "Decorate CONTENTS with each of DECORATORS.
+(defun posthtml-decorate (content &rest decorators)
+  "Translates html based CONTENT into an `esxml' parse-tree,
+applies (each) DECORATORS, returns string."
+  (let* ((html-string (substring-no-properties content))
+         (parse-tree (seq-reduce
+                      (lambda (content decorator)
+                        (let* ((fn (if (eq 'each (cadr decorator))
+                                       'posthtml-apply-each
+                                     'posthtml-apply))
+                               (action (format "%s" (car decorator)))
+                               (action (if (string-prefix-p ":" action)
+                                           (intern-soft (substring action 1 nil))
+                                         (car decorator)))
+                               (action (or (cdr (assoc action posthtml-decorator-token-alist))
+                                           action))
+                               (action (if (functionp action) action
+                                         (car action)))
+                               (args (if (eq 'each (cadr decorator))
+                                         (cddr decorator)
+                                       (cdr decorator))))
+                          (apply fn content action args)))
+                      decorators
+                      (posthtml--html-to-esxml html-string))))
+    (concat
+     (save-match-data
+       (if (eq nil (string-match "^\\(<!DOCTYPE[^>]+?>\n?\\)" html-string))
+           "" (match-string 1 html-string)))
+     (posthtml--esxml-to-html
+      (if (eq nil (string-match "<html" html-string))
+          (if (eq nil (string-match "<body" html-string))
+              (caddr (posthtml-find parse-tree 'body))
+            (posthtml-find parse-tree 'body))
+        parse-tree)))))
 
-CONTENTS is a string containing an HTML structure, which is
-converted into an `esxml' representation of the DOM tree, as
-parsed by `libxml-parse-html-region'; returns edited string via
-`esxml-to-xml'.
+(defun posthtml-apply (node fn selector &rest args)
+  "Search NODE, apply FN with element found by SELECTOR and ARGS.
 
-The car of each decorator is a function called with an `esxml'
-parse-tree, and the decorator's cdr as args when provided."
-  (let* ((html-string (substring-no-properties contents))
-         (esxml-parse-tree (posthtml--html-to-esxml html-string)))
-    (concat (save-match-data
-              (if (eq nil (string-match "^\\(<!DOCTYPE[^>]+?>\n?\\)" html-string)) ""
-                (match-string 1 html-string)))
-            (posthtml--esxml-to-html
-             (let ((results (seq-reduce (lambda (contents decorator)
-                                          (apply (car decorator) contents (cdr decorator)))
-                                        (seq-filter 'posthtml--decorator decorators)
-                                        esxml-parse-tree)))
-               (if (eq nil (string-match "<html" html-string))
-                   (if (eq nil (string-match "<body" html-string))
-                       (car (cddr (enlive-query results [body])))
-                     (enlive-query results [body]))
-                 results))))))
+NODE is an `esxml' parse-tree."
+  (let ((element (posthtml-find node selector)))
+    (setf element (apply fn element args))
+    node))
 
-(defun posthtml--decorator (&optional param)
-  "Translates custom PARAM tokens to functions.
+(defun posthtml-apply-each (node fn selector &rest args)
+  "Search NODE, apply FN to each element found by SELECTOR and ARGS.
 
-Please see `posthtml-decorate'."
-  (when param
-    (let* ((decorator (or (and (listp param) param)
-                          (list param)))
-           (action (cddr decorator)))
-      (pcase (car decorator)
-        ('$ (setf (car decorator) 'posthtml-apply))
-        ('$each (setf (car decorator) 'posthtml-apply-each)))
-      (when action
-        (pcase (car action)
-          (:append (setf (nth 2 decorator) 'posthtml-append))
-          (:prepend (setf (nth 2 decorator) 'posthtml-prepend))
-          (:attr (setf (nth 2 decorator) 'posthtml-attribute))
-          (:attr-set (setf (nth 2 decorator) (lambda (element &rest attributes) (apply 'posthtml-attributes-set element attributes))))
-          (:attrs (setf (nth 2 decorator) 'posthtml-attributes))
-          (:attrs-set (setf (nth 2 decorator) 'posthtml-attributes-set))))
-      decorator)))
+NODE is an `esxml' parse-tree."
+  (dolist (element (posthtml-find-all node selector)
+                   node)
+    (setf element (apply fn element args))))
 
-(defun posthtml-apply (content selector fn &rest args)
-  "Within CONTENT find element with SELECTOR, apply it to FN with ARGS.
+(defun posthtml-find (content selector)
+  "Search CONTENT for css SELECTOR, with `esxml-query'."
+  (esxml-query (or (and (not (listp selector))
+                        (esxml-parse-css-selector (format "%s" selector)))
+                   selector)
+               content))
 
-CONTENT is an `esxml' list.  SELECTOR is a vector, as used by
-`enlive'.  ARGS are `eval'-d in the current environment."
-  (let ((esxml-parse-tree (posthtml-find content selector)))
-    (setf esxml-parse-tree (apply fn esxml-parse-tree (mapcar 'eval args)))
-    content))
+(defun posthtml-find-all (content selector)
+  "Search CONTENT for css SELECTOR, with `esxml-query-all'."
+  (esxml-query-all (or (and (not (listp selector))
+                            (esxml-parse-css-selector (format "%s" selector)))
+                       selector)
+                   content))
 
-(defun posthtml-apply-each (content selector fn &rest args)
-  "Within CONTENT find each element with SELECTOR, apply it to FN with ARGS.
+(defun posthtml-append (container &optional element)
+  "Append to CONTAINER, as the last child node, ELEMENT.
 
-CONTENT is an esxml list.  SELECTOR is a vector, as used by
-`enlive'.  ARGS are `eval'-d in the current environment."
-  (dolist (esxml-parse-tree (posthtml-find-all content selector) content)
-    (setf esxml-parse-tree (apply fn esxml-parse-tree (mapcar 'eval args)))))
+CONTAINER is and `esxml' parse-tree.  ELEMENT can be a
+string or an esxml element."
+  (dom-append-child container element))
+
+(defun posthtml-prepend (container &optional element)
+  "Prepend to CONTAINER, as the first child node, ELEMENT.
+
+CONTAINER is and `esxml' parse-tree.  ELEMENT can be a
+string or an esxml element."
+  (dom-add-child-before container element nil))
+
+(defun posthtml-attr (element attribute &optional value)
+  "Return ELEMENT ATTRIBUTE value.  With optional VALUE, set.
+
+ELEMENT is an `esxml' parse-tree.  ATTRIBUTE is a string,
+optionally prepended with an ':'.  Setting VALUE to an empty
+string, '', removes ATTRIBUTE."
+  (let ((attr-name (format "%s" attribute)))
+    (when (string-prefix-p ":" attr-name)
+      (setq attribute (intern (substring attr-name 1 nil)))))
+  (or (when (and value (not (string= "" value)))
+        (dom-set-attribute element attribute value)
+        element)
+      (when (string= "" value)
+        (let* ((attributes (dom-attributes element))
+               (attribute (assq attribute attributes)))
+          (dom-set-attributes element (remove attribute attributes)))
+        element)
+      (dom-attr element attribute)))
+
+(defun posthtml-set (element &rest values)
+  "Set ELEMENT attributes to VALUES.
+
+ELEMENT is an `esxml' parse-tree.  VALUES is a list of
+attributes and values."
+  (seq-reduce (lambda (element attribute)
+                (apply 'posthtml-attr element attribute))
+              (seq-partition values 2) element))
+
+(defun posthtml-add (element &rest values)
+  "Add to ELEMENT attributes, VALUES.
+
+ELEMENT is an `esxml' parse-tree.  VALUES is a list of
+attributes and values."
+  (seq-reduce (lambda (element attribute)
+                (let ((current-value (posthtml-attr element (car attribute))))
+                  (posthtml-attr element (car attribute)
+                                 (if current-value
+                                     (format "%s %s" current-value (cadr attribute))
+                                   (format "%s" (cadr attribute))))))
+              (seq-partition values 2) element))
 
 (defun posthtml--html-to-esxml (contents)
-  "Translate CONTENTS, a string of HTML to an `esxml' parse-tree."
+  "Translate CONTENTS, a string of html, into an `esxml' parse-tree."
   (with-temp-buffer
     (insert (substring-no-properties contents))
     (goto-char (point-min))
@@ -132,7 +192,7 @@ CONTENT is an esxml list.  SELECTOR is a vector, as used by
     (libxml-parse-html-region (point-min) (point-max))))
 
 (defun posthtml--esxml-to-html (contents)
-  "Translate CONTENTS, an `esxml' parse-tree, to an HTML string."
+  "Translate CONTENTS, an `esxml' parse-tree, to string."
   (with-temp-buffer
     (insert (esxml-to-xml contents))
     (goto-char (point-min))
@@ -157,91 +217,6 @@ CONTENT is an esxml list.  SELECTOR is a vector, as used by
             (while (search-forward-regexp (format "<\\(%s\\).*?\\(/>\\)" element) nil t)
               (replace-match "></\\1>" nil nil nil 2))))
     (buffer-string)))
-
-(defun posthtml-find (content selector)
-  "Query CONTENT for SELECTOR.
-
-Wrapper function to `enlive-query'."
-  (enlive-query content selector))
-
-(defun posthtml-find-all (content selector)
-  "Query CONTENT for every SELECTOR.
-
-Wrapper function to `enlive-query-all'"
-  (enlive-query-all content selector))
-
-(defun posthtml-append (container &optional element)
-  "To CONTAINER, append ELEMENT.
-
-CONTAINER is an esxml list, ELEMENT is a list or a string."
-  (when element
-    (if (> 3 (length container))
-        (setcdr container (list nil element))
-      (setf (nthcdr 2 container)
-            (list (nth 2 container) element)))))
-
-(defun posthtml-prepend (container &optional element)
-  "To CONTAINER, prepend ELEMENT.
-
-CONTAINER is an esxml list, ELEMENT is a list or a string."
-  (when element
-    (if (> 3 (length container))
-        (posthtml-append container element)
-      (setf (nthcdr 2 container)
-            (append (list element) (nthcdr 2 container))))
-    container))
-
-(defun posthtml-attribute (element attribute &optional value force)
-  "Return ELEMENT's ATTRIBUTE value.
-
-With VALUE argument, add to ATTRIBUTE, VALUE.  Optional FORCE sets
-ATTRIBUTE to VALUE.  ELEMENT is an `esxml' list."
-  (let ((attribute (or (and (string= ":" (substring (format "%s" attribute) 0 1))
-                            (intern (substring (format "%s" attribute) 1 nil)))
-                       (identity attribute))))
-    (if value
-        (let* ((current-attribute (assq attribute (nth 1 element)))
-               (current-value (when current-attribute (cdr current-attribute))))
-          (if (and current-value (not force))
-              (posthtml-attribute-set element attribute (format "%s %s" current-value value))
-            (posthtml-attribute-set element attribute (format "%s" value))))
-      (let ((attributes (nth 1 element)))
-        (when (and (not (null attributes))
-                   (listp attributes))
-          (cdr (assq attribute attributes)))))))
-
-(defun posthtml-attributes (element &rest attributes)
-  "Apply ELEMENT to `posthtml-attribute' with each of ATTRIBUTES."
-  (seq-reduce (lambda (element attribute)
-                (apply 'posthtml-attribute element attribute))
-              (seq-partition attributes 2)
-              element))
-
-(defun posthtml-attributes-set (element &rest attributes)
-  "Apply ELEMENT to `posthtml-attribute-set' with each of ATTRIBUTES."
-  (seq-reduce (lambda (element attribute)
-                (apply 'posthtml-attribute element (append attribute '(t))))
-              (seq-partition attributes 2)
-              element))
-
-(defun posthtml-attribute-set (element attribute value)
-  "Set ELEMENT's ATTRIBUTE to VALUE."
-  (let ((attributes (nth 1 element)))
-    (if (or (null value) (string= "" value))
-        (when (and (not (null attributes))
-                   (listp attributes))
-          (let ((current-attribute (assq attribute attributes)))
-            (when current-attribute
-              (setf (nth 1 element)
-                    (remove current-attribute attributes)))))
-      (let ((value (format "%s" value)))
-        (cond ((null attributes)
-               (setf (nth 1 element)
-                     (list (cons attribute value))))
-              ((listp attributes)
-               (setf (nth 1 element) (append (delq (assq attribute attributes) attributes)
-                                             (list (cons attribute value)))))))
-        element)))
 
 (provide 'posthtml)
 ;;; posthtml.el ends here

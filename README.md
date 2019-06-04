@@ -1,65 +1,67 @@
 
-
 # posthtml
 
-`posthtml` provides a fluent interface to decorating a string of HTML like
-`"<ul><li/><li/></ul>"` - to add attributes such as `class` or `id` to elements,
-or to do custom processing.
+`posthtml`  provides  a  fluent interface  to  decorating  a
+string  of  HTML,  like  `"<ul><li/><li/></ul>"`  -  to  add
+attributes such  as `class`  or `id` to  elements, or  to do
+custom processing.
 
     (posthtml-decorate "<ul><li/><li/></ul>"
-                       '($ [ul] :attr :id 'CONTAINER)
-                       '($each [ul li] :attr :class 'ELEMENT))
+    		   '(:id ul "ID")
+    		   '(:class each "ul li" "CLASSNAME")
+    		   '((lambda (li)
+    		       (posthtml-append li "CONTENT"))
+    		     "ul>li"))
 
-The string is parsed into an `esxml` representation of the DOM tree by
-`libxml-parse-html-region` - the defined decorators are applied, and a string
-rendered via `esxml-to-xml` is returned. Querying is done with `enlive`.
+The string  is parsed into  an `esxml` (DOM)  tree structure
+with `libxml-parse-html-region` - the defined decorators are
+applied   in   sequence,   and   a   string   rendered   via
+`esxml-to-xml`   is  returned.    Querying   is  done   with
+`esxml-query`.
 
-As a typical use case scenario, `org-export-filter-final-output-functions` provide
-access to the final output of any `org-export`, or `org-publishing` sequence; this
-list consists of the last functions called with the rendered output, their output
-being what's written to disk.
-
-    (add-to-list 'org-export-filter-final-output-functions
-                 (lambda (contents backend info)
-                   (posthtml-decorate contents
-                                      '($ [body] :attr :style "background-color: black;"))))
+-   [github.com/balddotcat/posthtml](<https://github.com/balddotcat/posthtml>)
+-   [bald.cat/posthtml](<http://bald.cat/posthtml>)
 
 
--   [github.com/balddotcat/posthtml](https://github.com/balddotcat/posthtml)
--   [bald.cat/posthtml](http://bald.cat/posthtml)
+## decorating HTML output with posthtml-decorate
 
+The first  argument to `posthtml-decorate` is  a function or
+one  of the  following tokens;  `prepend`, `append`,  `set`,
+`add`, `id` and  `class`. These may be used  with or without
+an ':' prefix, and additional functionality can be specified
+by updating `posthtml-decorator-token-alist`.
 
-## posthtml-decorate `string &rest decorators`
+    '(:append h1 " APPEND")         ;; append to contents of h1 element
+    '(:set ul :class "COLUMNS")     ;; add COLUMNS class to ul element
+    '(:set h1 :id "TWO" :class "")  ;; set h1's id to TWO, remove all classes
+    '(:set ul :id "")               ;; remove ul's id attribute
 
-    '($ [h1] :append " APPEND")             ; append to contents of h1 element
-    '($ [ul] :attr :class 'COLUMNS)         ; add COLUMNS class to ul element
-    '($ [h1] :attrs-set :id 'TWO :class "") ; set h1's id to TWO, remove all classes
-    '($ [ul] :attr-set :id "")              ; remove ul's id attribute
+`posthtml-decorate` translates the  syntax decorators into a
+call    to   `posthtml-apply`    or   `posthtml-apply-each`,
+respectively. They are  responsible for querying `CONTAINER`
+for `SELECTOR`,  and applying (each)  found element -  as an
+`esxml` parse-tree - and `ARGS` to `FN`.
 
-`posthtml-decorate` translates the syntax decorators into a call to `posthtml-apply` or
-`posthtml-apply-each`, respectively. They are responsible for querying `CONTAINER`
-for `SELECTOR`, and applying (each) found element - as an `esxml` parse-tree - and
-`ARGS` to `FN`.
+    '((lambda (list-element current-uri)
+        (let ((link-uri (posthtml-attr (posthtml-find list-element 'a) 'href)))
+          (when (string= link-uri current-uri)
+    	(posthtml-set list-element :class "CURRENT"))))
+      each "ul li" "/uri-two")
 
-    '($each [ul li]
-            (lambda (list-element current-uri)
-              (let ((link-uri (posthtml-attribute (posthtml-find list-element [a]) 'href)))
-                (when (string= link-uri current-uri)
-                  (posthtml-attribute list-element :class 'CURRENT))))
-            "/uri-two")
+As  the element  provided  to each  function  is an  `esxml`
+parse-tree,  it  is  available   for  further  querying  and
+processing. In  the following,  the `ul`  is updated  with a
+dynamically created  `CSS` class  name, to reflect  how many
+elements it contains.
 
-As the element provided to each function is an `esxml` parse-tree, it is available
-for further querying and processing. In the following, the `ul` is updated with a
-dynamically created `CSS` class name, to reflect how many elements it contains.
+    '((lambda (ul)
+        (posthtml-add ul :class
+    		  (format "COLUMNSWIDTH%s"
+    			  (length (posthtml-find-all ul "li")))))
+      "ul"))
 
-    '($ [ul]
-        (lambda (ul)
-          (posthtml-attribute ul :class
-                              (format "COLUMNSWIDTH%s"
-                                      (length
-                                       (posthtml-find-all ul [li]))))))))
-
-Here is the result of running this contrived test case, with input on the left.
+Here is the result of running this contrived test case, with
+input on the left.
 
     <html><body>                                | <html><body>
         <h1 class=\"ONE\">headline</h1>         |     <h1 id=\"TWO\">headline APPEND</h1>
@@ -71,56 +73,62 @@ Here is the result of running this contrived test case, with input on the left.
     </body></html>                              | </body></html>
 
 
-### syntax decorators
+### selecting DOM nodes
 
--   **`$`:** posthtml-apply
--   **`$each`:** posthtml-apply-each
--   **`lambda`:** called with `esxml` parse-tree, and optional `args`
--   **`fn`:** called with `esxml` parse-tree, and optional `args`
+`posthtml-find`   and   `posthtml-find-all`   both   utilize
+[esxml-query](https://github.com/tali713/esxml)  to  provide
+`querySelector`-like  functionality in  finding (collections
+of) nodes with CSS selectors.
 
+Selectors are passed in as a string, as a combination of the
+following available options.
 
-#### actions
-
--   **`:append`:** posthtml-append
--   **`:prepend`:** posthtml-prepend
--   **`:attr`:** posthtml-attribute
--   **`:attr-set`:** posthtml-attributes-set
--   **`:attrs`:** posthtml-attributes
--   **`:attrs-set`:** posthtml-attributes-set
-
-
-## posthtml-find `esxml selector`
-
-Wrapper function to [enlive-query](https://github.com/tali713/esxml/blob/master/esxml-query.el) - please see source for full list of **selector** examples.
-
-
-### posthtml-findall `esxml selector`
-
-**Selectors** are `vector` objects, resembling **CSS** selectors which can have `id`-s, `classes`, `attributes` - as per **enlive**.
+    foo, bar       ;; Commas
+    foo bar        ;; Descendant combinator
+    foo>bar        ;; Child combinator
+    *              ;; Universal selector
+    tag            ;; Type selector
+    #foo           ;; ID selector
+    .foo           ;; Class selector
+    [foo]          ;; Attribute selector
+    [foo=bar]      ;; Exact match attribute selector
+    [foo^=bar]     ;; Prefix match attribute selector
+    [foo$=bar]     ;; Suffix match attribute selector
+    [foo*=bar]     ;; Substring match attribute selector
+    [foo~=bar]     ;; Include match attribute selector
+    [foo|bar]      ;; Dash match attribute selector
 
 
-## posthtml-append `esxml element`
+### dom manipulation
 
-Element can be a string or an `esxml` element.
-
-
-## posthtml-prepend `esxml element`
-
-Element can be a string or an `esxml` element.
+`posthtml-append` and `posthtml-prepend`  add child nodes to
+elements;  the  new  elements  can  be  strings  or  `esxml`
+lists.  Please   also  see  the  documentation   for  Emacs'
+`Document Object Model` package (dom.el).
 
 
-## posthtml-attribute `esxml attribute &optional value force`
+### attributes
 
-Returns the value of an `esxml` element's attribute. Optionally, when provided with
-a `value`, set or add `attribute` to element - set as only property with `force`.
+`posthtml-attr`  retrieves,  or with  a  value  sets, a  dom
+node's attribute.
 
--   attributes can start with or without an initial `:`
-
-
-### posthtml-attributes `esxml &rest attributes`
+Supplying  an empty  string  to  `posthtml-set` removes  the
+attribute, `posthtml-add` appends to the current value.
 
 
-### posthtml-attributes-set `esxml &rest attributes`
+## tweaking org-export output
+
+`org-export-filter-final-output-functions` provide access to
+the final  output of  any `org-export`,  or `org-publishing`
+sequence; this  list consists  of the last  functions called
+with the rendered output,  their output being what's written
+to disk.
+
+    (add-to-list 'org-export-filter-final-output-functions
+    	     (lambda (contents backend info)
+    	       (posthtml-decorate
+    		contents
+    		'(:set body :style "background-color: black;"))))
 
 
 ## tests
@@ -129,3 +137,4 @@ a `value`, set or add `attribute` to element - set as only property with `force`
           -l ert \
           -l posthtml-tests.el \
           -f ert-run-tests-batch-and-exit
+
