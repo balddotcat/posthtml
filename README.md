@@ -15,12 +15,8 @@ custom processing.
 
 The string  is parsed into  an `esxml` (DOM)  tree structure
 with `libxml-parse-html-region` - the defined decorators are
-applied   in   sequence,   and   a   string   rendered   via
-`esxml-to-xml`   is  returned.    Querying   is  done   with
-`esxml-query`.
-
--   [github.com/balddotcat/posthtml](<https://github.com/balddotcat/posthtml>)
--   [bald.cat/posthtml](<http://bald.cat/posthtml>)
+applied in  sequence, and  a string rendered  via `esxml-to-
+xml` is returned.  Querying is done with `esxml-query`.
 
 
 ## decorating HTML output with posthtml-decorate
@@ -48,8 +44,8 @@ for `SELECTOR`,  and applying (each)  found element -  as an
     	(posthtml-set list-element :class "CURRENT"))))
       each "ul li" "/uri-two")
 
-As  the element  provided  to each  function  is an  `esxml`
-parse-tree,  it  is  available   for  further  querying  and
+As the element provided to each function is an `esxml` parse
+-tree,   it   is   available  for   further   querying   and
 processing. In  the following,  the `ul`  is updated  with a
 dynamically created  `CSS` class  name, to reflect  how many
 elements it contains.
@@ -75,8 +71,8 @@ input on the left.
 
 ### selecting DOM nodes
 
-`posthtml-find`   and   `posthtml-find-all`   both   utilize
-[esxml-query](https://github.com/tali713/esxml)  to  provide
+`posthtml-find` and `posthtml-find-all` both utilize [esxml-
+query](https://github.com/tali713/esxml)      to     provide
 `querySelector`-like  functionality in  finding (collections
 of) nodes with CSS selectors.
 
@@ -104,7 +100,9 @@ following available options.
 `posthtml-append` and `posthtml-prepend`  add child nodes to
 elements;  the  new  elements  can  be  strings  or  `esxml`
 lists.  Please   also  see  the  documentation   for  Emacs'
-`Document Object Model` package (dom.el).
+`Document Object Model` package.
+
+[dom.el](https://www.gnu.org/software/emacs/manual/html_node/elisp/Document-Object-Model.html)
 
 
 ### attributes
@@ -116,7 +114,7 @@ Supplying  an empty  string  to  `posthtml-set` removes  the
 attribute, `posthtml-add` appends to the current value.
 
 
-## tweaking org-export output
+## example usage: tweaking org-export output
 
 `org-export-filter-final-output-functions` provide access to
 the final  output of  any `org-export`,  or `org-publishing`
@@ -137,4 +135,3 @@ to disk.
           -l ert \
           -l posthtml-tests.el \
           -f ert-run-tests-batch-and-exit
-
